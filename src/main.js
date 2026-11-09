@@ -356,7 +356,7 @@ async function download(item) {
   const ext = { 'image/png': 'png', 'image/webp': 'webp', 'image/jpeg': 'jpg' }[blob.type] || 'png';
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${item.name.replace(/\.[^.]+$/, '')}-xoa-nen.${ext}`;
+  a.download = `uycut-${item.name.replace(/\.[^.]+$/, '')}.${ext}`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
 }

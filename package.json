@@ -1,9 +1,9 @@
 {
-  "name": "xoa-phong-nen",
+  "name": "uycut-ai",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Công cụ xóa phông nền ảnh bằng AI trên trình duyệt, giữ nguyên độ phân giải gốc",
+  "description": "UyCut AI - Công cụ xóa phông nền ảnh bằng AI trên trình duyệt by Uy, giữ nguyên độ phân giải gốc",
   "license": "AGPL-3.0",
   "scripts": {
     "dev": "vite",

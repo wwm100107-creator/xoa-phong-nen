@@ -1,6 +1,6 @@
-# ✂️ Xóa Phông Nền – Giữ nguyên độ phân giải
+# ✂️ UyCut AI – Xóa Phông Nền Giữ Nguyên Độ Phân Giải
 
-Công cụ web xóa phông nền ảnh bằng AI, **chạy 100% trên trình duyệt** (ảnh không bị tải lên server), hỗ trợ hầu hết định dạng ảnh và **xuất ra đúng kích thước, độ nét của ảnh gốc**.
+Công cụ web xóa phông nền ảnh bằng AI phát triển bởi **Uy**, **chạy 100% trên trình duyệt** (ảnh không bị tải lên server), hỗ trợ hầu hết định dạng ảnh và **xuất ra đúng kích thước, độ nét của ảnh gốc**.
 
 ## Tính năng
 

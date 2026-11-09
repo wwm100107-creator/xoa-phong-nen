@@ -45,12 +45,16 @@ code { background: #1f2430; padding: 1px 6px; border-radius: 6px; font-size: .9e
   background: rgba(11, 13, 18, .7);
 }
 .brand { display: flex; gap: 14px; align-items: center; }
-.logo {
-  width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; font-size: 22px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff;
-  box-shadow: 0 8px 24px -8px var(--accent);
+.brand-logo {
+  width: 42px; height: 42px; border-radius: 12px; display: block;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .4);
 }
-.brand h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -.02em; }
+.brand-title-wrap { display: flex; align-items: center; gap: 8px; }
+.brand h1 { margin: 0; font-size: 21px; font-weight: 800; letter-spacing: -.02em; color: #fff; }
+.brand-badge {
+  font-size: 10px; font-weight: 700; letter-spacing: .05em; padding: 2px 7px; border-radius: 99px;
+  background: rgba(124, 92, 255, .2); color: var(--accent); border: 1px solid rgba(124, 92, 255, .35);
+}
 .brand p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
 
 /* ---------------- Nút ---------------- */
