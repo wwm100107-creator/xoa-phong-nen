@@ -97,7 +97,7 @@ async function runAI(item) {
     if (item === selected) showOverlay(label, ratio);
   });
   item.aiMs = performance.now() - t;
-  item.model = item.layers.length > 1 ? 'rmbg-1.4 + soi cận' : 'rmbg-1.4';
+  item.model = item.layers.length > 1 ? 'RMBG + ormbg + soi cận' : 'RMBG + ormbg';
 }
 
 async function processItem(item) {

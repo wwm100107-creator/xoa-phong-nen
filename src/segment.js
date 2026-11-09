@@ -26,6 +26,29 @@ export function resizeHQ(src, w, h) {
   }
 }
 
+/**
+ * Chạy mô hình chính rồi bổ sung bằng mô hình phụ. Mỗi mô hình có điểm mù riêng:
+ * RMBG hiểu chủ thể tốt nhưng hay bỏ sót viền giấy của sticker, ormbg bắt được viền
+ * nhưng hay nhận cả lề đường hay mặt đất. Mô hình phụ chỉ được thêm vào nơi RMBG
+ * ít nhất cũng có chút nghi ngờ (p >= 0.01); nơi RMBG khẳng định 0 thì giữ nguyên.
+ */
+async function predictMerged(canvas, onProgress) {
+  const mask = await predictWithModel(canvas, 'main', onProgress);
+  let assist;
+  try {
+    assist = await predictWithModel(canvas, 'assist', onProgress);
+  } catch (err) {
+    console.warn('Không dùng được mô hình phụ, tiếp tục với mô hình chính:', err);
+    return mask;
+  }
+  for (let i = 0; i < mask.length; i++) {
+    const gate = Math.max(0, Math.min(1, (mask[i] - 0.01) / 0.03));
+    const candidate = assist[i] * gate;
+    if (candidate > mask[i]) mask[i] = candidate;
+  }
+  return mask;
+}
+
 /** Khung soi cận tính theo tỉ lệ ảnh (0..1), hoặc null nếu soi cận không có lợi. */
 function focusRect(mask, W, H) {
   const S = MODEL_SIZE;
@@ -70,7 +93,7 @@ export async function predictLayers(srcCanvas, onProgress) {
   const input = k < 1 ? resizeHQ(srcCanvas, Math.round(W * k), Math.round(H * k)) : srcCanvas;
 
   onProgress?.('AI đang phân tích chủ thể...', null);
-  const base = await predictWithModel(input, onProgress);
+  const base = await predictMerged(input, onProgress);
   const layers = [{ mask: base, w: MODEL_SIZE, h: MODEL_SIZE }];
 
   const rect = focusRect(base, W, H);
@@ -85,7 +108,7 @@ export async function predictLayers(srcCanvas, onProgress) {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(srcCanvas, Math.round(rect.x * W), Math.round(rect.y * H), cw, ch, 0, 0, crop.width, crop.height);
-    const focused = await predictWithModel(crop, onProgress);
+    const focused = await predictMerged(crop, onProgress);
     layers.push({ mask: focused, w: MODEL_SIZE, h: MODEL_SIZE, rect });
   }
   return layers;

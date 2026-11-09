@@ -49,8 +49,24 @@ export function boxMean(src, w, h, r, out, tmp) {
   }
 }
 
-/** Lấy mẫu song tuyến một mặt nạ mw×mh về lưới w×h. */
+/** Thu nhỏ bằng trung bình vùng, tránh răng cưa của phép lấy mẫu điểm. */
+function shrinkMask(mask, mw, mh, w, h) {
+  const out = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.floor(y * mh / h), y1 = Math.max(y0 + 1, Math.ceil((y + 1) * mh / h));
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.floor(x * mw / w), x1 = Math.max(x0 + 1, Math.ceil((x + 1) * mw / w));
+      let sum = 0;
+      for (let my = y0; my < y1; my++) for (let mx = x0; mx < x1; mx++) sum += mask[my * mw + mx];
+      out[y * w + x] = sum / ((y1 - y0) * (x1 - x0));
+    }
+  }
+  return out;
+}
+
+/** Đổi kích thước một mặt nạ mw×mh về lưới w×h. */
 export function resampleMask(mask, mw, mh, w, h) {
+  if (mw >= w && mh >= h && (mw > w || mh > h)) return shrinkMask(mask, mw, mh, w, h);
   const out = new Float32Array(w * h);
   for (let y = 0; y < h; y++) {
     const sy = Math.min(mh - 1, Math.max(0, (y + 0.5) * mh / h - 0.5));
@@ -89,18 +105,14 @@ export function composeLayers(layers, gw, gh) {
     const y1 = Math.min(gh, Math.round((rect.y + rect.h) * gh));
     const fade = Math.max(4, Math.round(Math.max(x1 - x0, y1 - y0) * 0.03));
     const rw = x1 - x0, rh = y1 - y0;
+    if (rw < 1 || rh < 1) continue;
+    const fitted = resampleMask(mask, mw, mh, rw, rh);
 
     for (let y = y0; y < y1; y++) {
-      const sy = Math.min(mh - 1, Math.max(0, (y - y0 + 0.5) * mh / rh - 0.5));
-      const my0 = Math.floor(sy), my1 = Math.min(mh - 1, my0 + 1), fy = sy - my0;
       for (let x = x0; x < x1; x++) {
         const idx = y * gw + x;
         if (near[idx] <= 0) continue; // quá xa chủ thể: giữ nguyên lớp 0
-        const sx = Math.min(mw - 1, Math.max(0, (x - x0 + 0.5) * mw / rw - 0.5));
-        const mx0 = Math.floor(sx), mx1 = Math.min(mw - 1, mx0 + 1), fx = sx - mx0;
-        const top = mask[my0 * mw + mx0] * (1 - fx) + mask[my0 * mw + mx1] * fx;
-        const bot = mask[my1 * mw + mx0] * (1 - fx) + mask[my1 * mw + mx1] * fx;
-        let v = top * (1 - fy) + bot * fy;
+        let v = fitted[(y - y0) * rw + (x - x0)];
         if (near[idx] >= 0.999) v = Math.max(v, p[idx]); // lõi chủ thể: không đục lỗ
 
         // Mờ dần về mép khung cắt (trừ cạnh trùng biên ảnh)
@@ -118,8 +130,8 @@ export function composeLayers(layers, gw, gh) {
 
 /**
  * Bỏ các đốm rác tách rời. Một cụm được giữ nếu nó là cụm lớn nhất, đủ lớn so với
- * cụm lớn nhất (nhiều chủ thể), hoặc nằm gần một cụm đã giữ (sợi tóc rời, khuyên tai,
- * các chữ cái của logo).
+ * cụm lớn nhất (nhiều chủ thể), hoặc có phần chắc chắn và nằm gần một cụm đã giữ
+ * (khuyên tai, các chữ cái của logo). Cụm toàn điểm mờ, không dính vào đâu thì bỏ.
  */
 export function removeStrayIslands(p, w, h) {
   const N = w * h;
@@ -169,7 +181,7 @@ export function removeStrayIslands(p, w, h) {
     let changed = false;
     for (let i = 0; i < N; i++) {
       const l = labels[i];
-      if (l && !kept[l] && near[i] > 0) { kept[l] = 1; changed = true; }
+      if (l && !kept[l] && core[l] > 0 && near[i] > 0) { kept[l] = 1; changed = true; }
     }
     if (!changed) break;
   }
@@ -238,14 +250,53 @@ function expandPromotedRegions(rgb, labels, small, w, h) {
   }
   if (coreArea < n * 0.0015) return null;
 
-  const zone = new Float32Array(n);
-  boxMean(core, w, h, Math.max(4, Math.round(Math.max(w, h) * 0.08)), zone, tmp);
-  for (let i = 0; i < n; i++) {
-    if (zone[i] > 0 && labels[i] === LABEL.BG) labels[i] = LABEL.PROBABLE_BG;
-  }
-  grabCut(rgb, labels, w, h, 3);
+  const side = Math.max(w, h);
+  const zone = new Float32Array(n), grown = new Float32Array(n), gained = new Float32Array(n);
+  boxMean(core, w, h, Math.max(4, Math.round(side * 0.08)), zone, tmp);
   for (let i = 0; i < n; i++) zone[i] = zone[i] > 0 ? 1 : 0;
+
+  // Mở rộng từng bước theo phần vừa giành được, để đi hết những đoạn thuôn như mũi lá
+  const opened = new Uint8Array(n);
+  for (let round = 1; round <= 3; round++) {
+    let fresh = 0;
+    for (let i = 0; i < n; i++) {
+      if (zone[i] > 0 && labels[i] === LABEL.BG) { labels[i] = LABEL.PROBABLE_BG; opened[i] = round; fresh++; }
+    }
+    if (!fresh) break;
+    grabCut(rgb, labels, w, h, 3);
+
+    let won = 0;
+    for (let i = 0; i < n; i++) {
+      gained[i] = opened[i] === round && labels[i] === LABEL.PROBABLE_FG ? 1 : 0;
+      won += gained[i];
+    }
+    if (!won) break;
+    boxMean(gained, w, h, Math.max(3, Math.round(side * 0.04)), grown, tmp);
+    for (let i = 0; i < n; i++) if (grown[i] > 0) zone[i] = 1;
+  }
   return zone;
+}
+
+/**
+ * Mảnh tiền cảnh mà AI không tin chắc và không dính liền với phần AI đã chắc chắn
+ * chỉ là vật nền trùng màu. Mảnh AI tin từ 60% trở lên thì vẫn giữ (nhiều chủ thể).
+ */
+function dropDetached(labels, small, w, h) {
+  const n = w * h;
+  const reached = new Uint8Array(n), stack = new Int32Array(n);
+  let sp = 0;
+  for (let i = 0; i < n; i++) if (labels[i] === LABEL.FG) { reached[i] = 1; stack[sp++] = i; }
+  while (sp > 0) {
+    const cur = stack[--sp], x = cur % w;
+    for (const next of [x > 0 ? cur - 1 : -1, x < w - 1 ? cur + 1 : -1, cur - w, cur + w]) {
+      if (next < 0 || next >= n || reached[next] || labels[next] !== LABEL.PROBABLE_FG) continue;
+      reached[next] = 1;
+      stack[sp++] = next;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    if (labels[i] === LABEL.PROBABLE_FG && !reached[i] && small[i] < 0.6) labels[i] = LABEL.BG;
+  }
 }
 
 /**
@@ -289,11 +340,18 @@ export function decideRegions(p, guide, gw, gh) {
   }
   if (!grabCut(rgb, labels, sw, sh)) return p;
   const zone = expandPromotedRegions(rgb, labels, small, sw, sh);
+  dropDetached(labels, small, sw, sh);
 
   const isFg = new Float32Array(n);
   for (let i = 0; i < n; i++) isFg[i] = labels[i] === LABEL.FG || labels[i] === LABEL.PROBABLE_FG ? 1 : 0;
   const cut = resampleMask(isFg, sw, sh, gw, gh);
   const inZone = zone ? resampleMask(zone, sw, sh, gw, gh) : null;
+
+  // Đường cắt nằm trên lưới nhỏ nên bị răng cưa: làm mềm để guided filter còn chỗ bám biên thật
+  const blurred = new Float32Array(gw * gh), cutSoft = new Float32Array(gw * gh), work = new Float32Array(gw * gh);
+  const blurR = Math.max(1, Math.round(0.75 * (gw / sw)));
+  boxMean(cut, gw, gh, blurR, blurred, work);
+  boxMean(blurred, gw, gh, blurR, cutSoft, work);
 
   const N = gw * gh;
   const fgSeed = new Uint8Array(N), bgSeed = new Uint8Array(N);
@@ -311,11 +369,13 @@ export function decideRegions(p, guide, gw, gh) {
       if (toBg[i] >= inner) p[i] = 1;
       else {
         const sure = clip01((Math.abs(2 * v - 1) - 0.3) / 0.6);
-        p[i] = sure * v + (1 - sure) * cut[i];
+        p[i] = sure * v + (1 - sure) * cutSoft[i];
       }
     } else {
-      // Giữ phần mềm sát chủ thể (tóc, lông), xa dần thì về 0
-      p[i] = v * clip01(1 - toFg[i] / margin);
+      // Vùng dày đã có đường cắt rõ: phần ngoài là nền hẳn, nếu giữ lại sẽ thành quầng mờ
+      if (inZone && inZone[i] >= 0.5) p[i] = cutSoft[i];
+      // Còn lại giữ phần mềm sát chủ thể (tóc, lông), xa dần thì về 0
+      else p[i] = v * clip01(1 - toFg[i] / margin);
     }
   }
   return p;

@@ -11,7 +11,7 @@ Công cụ web tách phông nền ảnh bằng AI được thiết kế & phát 
 
 AI quyết định đâu là chủ thể, các bước sau chỉ làm đẹp đường viền. Pipeline không chứa luật màu sắc hay vị trí dành riêng cho một loại ảnh.
 
-1. **BRIA RMBG-1.4 bản đầy đủ (fp32, ~176MB)**: ảnh được co về 1024×1024 đúng như lúc huấn luyện. Bản lượng tử q8 để lọt nhiều rác nền, còn đệm viền letterbox khiến mô hình nhận cả nền thành chủ thể.
+1. **Hai mô hình bổ sung cho nhau (fp16, ~88MB mỗi mô hình)**: BRIA RMBG-1.4 nhận diện chủ thể, ormbg bổ sung chi tiết RMBG hay bỏ sót như viền giấy sticker, nhưng không được thêm vào nơi RMBG khẳng định là nền. Ảnh được co về 1024×1024 đúng như lúc huấn luyện. Bản lượng tử q8 để lọt nhiều rác nền, còn đệm viền letterbox khiến mô hình nhận cả nền thành chủ thể.
 2. **WebAssembly đa luồng**: header COOP/COEP bật cross-origin isolation, mỗi lượt AI chỉ mất khoảng 2-3 giây trên máy nhiều nhân.
 3. **Soi cận chủ thể**: khi chủ thể chiếm phần nhỏ của ảnh, AI chạy thêm một lượt trên khung cắt sát. Lượt này chỉ được sửa vùng quanh đường viền.
 4. **Quyết định vùng khó bằng graph cut**: vùng AI còn phân vân (chiếc lá, viền giấy sticker) được phân xử theo phân bố màu của chủ thể và nền. Bóng đổ và lớp mờ bị loại, tóc vẫn giữ độ mềm.
@@ -34,7 +34,7 @@ Khi cần chỉnh tay, ví dụ băng dính hay vật gá nằm tách rời mà 
 flowchart TD
     A["File ảnh gốc bất kỳ (JPG, PNG, HEIC, TIFF, WebP, SVG...)"] --> B["decode.js: Giải mã giữ nguyên kích thước W x H"]
     B --> C["segment.js: Co ảnh về 1024x1024, thêm lượt soi cận chủ thể"]
-    C --> D["rmbg.js: RMBG-1.4 fp32 trên WASM đa luồng"]
+    C --> D["rmbg.js: RMBG-1.4 + ormbg fp16 trên WASM đa luồng"]
     D --> E["Các lớp mặt nạ"]
     B --> F["refine.core.js: Graph cut + Dọn rác + Guided filter màu + Khử màu nền"]
     E --> F
