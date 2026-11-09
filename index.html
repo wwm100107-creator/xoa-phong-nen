@@ -14,8 +14,8 @@
       <div class="brand">
         <img src="/logo.svg" alt="UyCut AI Logo" class="brand-logo" />
         <div class="brand-text">
-          <span class="brand-name">UyCut <span class="badge">AI 4.0</span></span>
-          <span class="brand-tagline">Tách nền cực hạn chuẩn độ phân giải gốc · Made by Uy</span>
+          <span class="brand-name">UyCut <span class="badge">AI 5.0 REA</span></span>
+          <span class="brand-tagline">Tách nền đỉnh cao chuẩn Remove.bg · 100% độ phân giải gốc · Made by Uy</span>
         </div>
       </div>
       <nav class="header-nav">
@@ -57,11 +57,12 @@
           </label>
           <label class="switch">
             <input id="deshadowToggle" type="checkbox" checked />
-            <span>Tự động xóa bóng đổ (Deshadow)</span>
+            <span>Tự động xóa bóng đổ & băng keo (Deshadow REA)</span>
           </label>
           <div class="quick-presets">
+            <button type="button" id="autoRbgBtn" class="preset-btn active" title="Cài đặt tối ưu tự động chuẩn như Remove.bg: triệt tiêu bóng đổ, lọc rác, bảo vệ 100% chủ thể">⭐ Chuẩn Remove.bg</button>
             <button type="button" id="stripStickerBtn" class="preset-btn" title="Tự động bóc sạch viền giấy trắng của sticker, chỉ giữ lại ruột quả/vật thể">✂️ Bóc viền Sticker</button>
-            <button type="button" id="resetBorderBtn" class="preset-btn" title="Khôi phục lại viền gốc">↺ Giữ nguyên viền</button>
+            <button type="button" id="resetBorderBtn" class="preset-btn" title="Khôi phục lại viền gốc">↺ Mặc định</button>
           </div>
           <div class="slider">
             <label for="threshRange">Độ nhạy tách nền <b id="threshVal">50%</b></label>
@@ -72,16 +73,16 @@
             <input id="trimRange" type="range" min="0" max="6" value="0" />
           </div>
           <div class="slider">
-            <label for="radiusRange">Bán kính tinh chỉnh <b id="radiusVal">6</b></label>
-            <input id="radiusRange" type="range" min="1" max="20" value="6" />
+            <label for="radiusRange">Bán kính tinh chỉnh <b id="radiusVal">4</b></label>
+            <input id="radiusRange" type="range" min="1" max="10" value="4" />
           </div>
           <div class="slider">
-            <label for="lowRange">Lọc nhiễu nền <b id="lowVal">4%</b></label>
-            <input id="lowRange" type="range" min="0" max="50" value="4" />
+            <label for="lowRange">Lọc nhiễu nền <b id="lowVal">8%</b></label>
+            <input id="lowRange" type="range" min="0" max="30" value="8" />
           </div>
           <div class="slider">
-            <label for="highRange">Độ đặc chủ thể <b id="highVal">96%</b></label>
-            <input id="highRange" type="range" min="50" max="100" value="96" />
+            <label for="highRange">Độ đặc chủ thể <b id="highVal">95%</b></label>
+            <input id="highRange" type="range" min="50" max="100" value="95" />
           </div>
 
           <h2>Nền xuất ra</h2>

@@ -19,7 +19,7 @@ const $ = (id) => document.getElementById(id);
 const els = {
   drop: $('dropzone'), input: $('fileInput'), model: $('modelSelect'),
   keepMain: $('keepMainToggle'), refine: $('refineToggle'), deshadow: $('deshadowToggle'),
-  stripSticker: $('stripStickerBtn'), resetBorder: $('resetBorderBtn'),
+  autoRbg: $('autoRbgBtn'), stripSticker: $('stripStickerBtn'), resetBorder: $('resetBorderBtn'),
   trim: $('trimRange'), trimVal: $('trimVal'),
   radius: $('radiusRange'), low: $('lowRange'), high: $('highRange'),
   thresh: $('threshRange'), threshVal: $('threshVal'),
@@ -79,13 +79,13 @@ function getParams() {
   const delta = (0.5 - t) * 0.35;
   const lowOffset = +els.low.value / 100;
   const highOffset = +els.high.value / 100;
-  const low = Math.max(0, Math.min(0.45, lowOffset + delta));
+  const low = Math.max(0.04, Math.min(0.45, lowOffset + delta));
   const high = Math.max(0.55, Math.min(1, highOffset + delta));
 
   return {
     keepMain: els.keepMain ? els.keepMain.checked : true,
     refine: els.refine.checked,
-    deshadow: els.deshadow.checked,
+    deshadow: els.deshadow ? els.deshadow.checked : true,
     trim: +els.trim.value,
     radius: +els.radius.value,
     low,
@@ -576,6 +576,18 @@ async function refineSelected() {
   });
 });
 
+els.autoRbg?.addEventListener('click', () => {
+  els.trim.value = 0;
+  els.thresh.value = 50;
+  els.radius.value = 4;
+  els.low.value = 8;
+  els.high.value = 95;
+  if (els.keepMain) els.keepMain.checked = true;
+  if (els.deshadow) els.deshadow.checked = true;
+  if (els.refine) els.refine.checked = true;
+  onParamsChange();
+});
+
 els.stripSticker?.addEventListener('click', () => {
   els.trim.value = 3;
   els.thresh.value = 52;
@@ -585,6 +597,12 @@ els.stripSticker?.addEventListener('click', () => {
 els.resetBorder?.addEventListener('click', () => {
   els.trim.value = 0;
   els.thresh.value = 50;
+  els.radius.value = 4;
+  els.low.value = 8;
+  els.high.value = 95;
+  if (els.keepMain) els.keepMain.checked = true;
+  if (els.deshadow) els.deshadow.checked = true;
+  if (els.refine) els.refine.checked = true;
   onParamsChange();
 });
 
