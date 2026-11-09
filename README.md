@@ -14,8 +14,8 @@ AI quyết định đâu là chủ thể, các bước sau chỉ làm đẹp đ�
 1. **BRIA RMBG-1.4 bản đầy đủ (fp32, ~176MB)**: ảnh được co về 1024×1024 đúng như lúc huấn luyện. Bản lượng tử q8 để lọt nhiều rác nền, còn đệm viền letterbox khiến mô hình nhận cả nền thành chủ thể.
 2. **WebAssembly đa luồng**: header COOP/COEP bật cross-origin isolation, mỗi lượt AI chỉ mất khoảng 2-3 giây trên máy nhiều nhân.
 3. **Soi cận chủ thể**: khi chủ thể chiếm phần nhỏ của ảnh, AI chạy thêm một lượt trên khung cắt sát. Lượt này chỉ được sửa vùng quanh đường viền.
-4. **Dọn rác**: bỏ đốm tách rời và lớp mờ xa chủ thể, giữ vật thể thật và chi tiết gần (tóc rời, khuyên tai, chữ cái của logo).
-5. **Giảm bóng đổ thận trọng**: chỉ tác động lên vùng AI còn phân vân, có cùng sắc độ với nền và tối hơn nền.
+4. **Quyết định vùng khó bằng graph cut**: vùng AI còn phân vân (chiếc lá, viền giấy sticker) được phân xử theo phân bố màu của chủ thể và nền. Bóng đổ và lớp mờ bị loại, tóc vẫn giữ độ mềm.
+5. **Dọn rác**: bỏ đốm tách rời xa chủ thể, giữ vật thể thật và chi tiết gần (tóc rời, khuyên tai, chữ cái của logo).
 6. **Viền chất lượng cao**: guided filter đa kênh màu bám biên thật của ảnh, sau đó ước lượng màu tiền cảnh (Germer et al. 2020) để viền không ám màu phông cũ.
 
 Khi cần chỉnh tay, ví dụ băng dính hay vật gá nằm tách rời mà AI coi là chủ thể, dùng các công cụ dưới đây.
@@ -36,7 +36,7 @@ flowchart TD
     B --> C["segment.js: Co ảnh về 1024x1024, thêm lượt soi cận chủ thể"]
     C --> D["rmbg.js: RMBG-1.4 fp32 trên WASM đa luồng"]
     D --> E["Các lớp mặt nạ"]
-    B --> F["refine.core.js: Dọn rác + Giảm bóng + Guided filter màu + Khử màu nền"]
+    B --> F["refine.core.js: Graph cut + Dọn rác + Guided filter màu + Khử màu nền"]
     E --> F
     F --> G["Canvas kết quả W x H (Kênh Alpha chuẩn xác)"]
     G --> H["Bộ công cụ Studio: Magic Wand 1 chạm & Cọ quét 60fps"]

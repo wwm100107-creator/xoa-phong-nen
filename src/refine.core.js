@@ -7,13 +7,16 @@
  *
  * Các bước (mọi phép tính nặng chạy trên "lưới dẫn" gw×gh, ảnh gốc chỉ nội suy):
  *   1. composeLayers      Ghép mặt nạ toàn ảnh với mặt nạ soi cận chủ thể.
- *   2. removeStrayIslands Bỏ đốm rác xa chủ thể, giữ vật thể thật và chi tiết gần.
- *   3. softenCastShadow   Giảm bóng đổ ở vùng AI còn phân vân.
+ *   2. decideRegions      Vùng AI còn phân vân được quyết định bằng màu ảnh (graph cut).
+ *   3. removeStrayIslands Bỏ đốm rác xa chủ thể, giữ vật thể thật và chi tiết gần.
  *   4. guided filter màu  Bám alpha theo biên màu thật của ảnh trong dải viền.
  *   5. estimateForeground Khử màu nền bám ở viền bán trong suốt (Germer et al. 2020).
  *   6. Áp lên ảnh gốc W×H, giữ chi tiết tần số cao của ảnh thật.
  */
+import { grabCut, LABEL } from './graphcut.js';
 
+const REGION_GRID = 512;
+const THICK_REGION = 0.015; // bán kính tối thiểu (theo cạnh ảnh) để một vùng được coi là dày
 const SURE_LOW = 0.03;
 const SURE_HIGH = 0.97;
 
@@ -172,20 +175,16 @@ export function removeStrayIslands(p, w, h) {
   }
 
   for (let i = 0; i < N; i++) if (labels[i] && !kept[labels[i]]) p[i] = 0;
-  return fadeFarHaze(p, w, h);
+  return p;
 }
 
-/**
- * Xóa lớp mờ AI để lại xa chủ thể. Điểm yếu (p < 0.5) chỉ có nghĩa khi nằm gần phần
- * chắc chắn, như tóc hay lông; càng xa thì càng mờ dần về 0.
- */
-function fadeFarHaze(p, w, h) {
+/** Khoảng cách chamfer tới điểm hạt gần nhất (seed[i] != 0). */
+function distanceToSeeds(seed, w, h) {
   const N = w * h;
   const dist = new Float32Array(N);
   const INF = w + h;
-  for (let i = 0; i < N; i++) dist[i] = p[i] >= 0.5 ? 0 : INF;
+  for (let i = 0; i < N; i++) dist[i] = seed[i] ? 0 : INF;
 
-  // Biến đổi khoảng cách chamfer 2 lượt
   const D = 1.4142;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -213,11 +212,111 @@ function fadeFarHaze(p, w, h) {
       dist[i] = d;
     }
   }
+  return dist;
+}
 
-  const side = Math.max(w, h);
-  const near = side * 0.02, far = side * 0.05;
+/**
+ * Khi graph cut vừa khẳng định một vùng dày mà AI từng phân vân (ví dụ chiếc lá), phần
+ * tiếp theo của vùng đó có thể bị AI chấm gần 0 (mũi lá, viền giấy bao quanh lá).
+ * Chỉ quanh những vùng như vậy mới mở khóa nhãn "chắc chắn là nền" rồi cắt lại.
+ * Dải viền mỏng quanh chủ thể không tính, nên bóng dưới gầm xe vẫn bị loại.
+ * @returns vùng đã mở khóa, hoặc null nếu ảnh không có vùng dày nào như vậy
+ */
+function expandPromotedRegions(rgb, labels, small, w, h) {
+  const n = w * h;
+  const promoted = new Float32Array(n), core = new Float32Array(n), tmp = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const fg = labels[i] === LABEL.FG || labels[i] === LABEL.PROBABLE_FG;
+    promoted[i] = fg && small[i] < 0.9 ? 1 : 0;
+  }
+  boxMean(promoted, w, h, Math.max(2, Math.round(Math.max(w, h) * THICK_REGION)), core, tmp);
+
+  let coreArea = 0;
+  for (let i = 0; i < n; i++) {
+    core[i] = core[i] >= 0.999 ? 1 : 0;
+    coreArea += core[i];
+  }
+  if (coreArea < n * 0.0015) return null;
+
+  const zone = new Float32Array(n);
+  boxMean(core, w, h, Math.max(4, Math.round(Math.max(w, h) * 0.08)), zone, tmp);
+  for (let i = 0; i < n; i++) {
+    if (zone[i] > 0 && labels[i] === LABEL.BG) labels[i] = LABEL.PROBABLE_BG;
+  }
+  grabCut(rgb, labels, w, h, 3);
+  for (let i = 0; i < n; i++) zone[i] = zone[i] > 0 ? 1 : 0;
+  return zone;
+}
+
+/**
+ * Quyết định các vùng AI còn phân vân bằng graph cut trên lưới nhỏ.
+ * Điểm AI gần như chắc chắn là nền (p < 0.02) không bao giờ được thành tiền cảnh,
+ * nhờ đó bóng tối dưới gầm xe hay nền tối gần tóc đen không bị kéo vào chủ thể.
+ */
+export function decideRegions(p, guide, gw, gh) {
+  const k = Math.min(1, REGION_GRID / Math.max(gw, gh));
+  const sw = Math.max(1, Math.round(gw * k)), sh = Math.max(1, Math.round(gh * k));
+  if (sw < 8 || sh < 8) return p;
+
+  const n = sw * sh;
+  const rgb = new Uint8Array(n * 3), small = new Float32Array(n);
+  for (let sy = 0; sy < sh; sy++) {
+    const y0 = Math.floor(sy * gh / sh), y1 = Math.max(y0 + 1, Math.floor((sy + 1) * gh / sh));
+    for (let sx = 0; sx < sw; sx++) {
+      const x0 = Math.floor(sx * gw / sw), x1 = Math.max(x0 + 1, Math.floor((sx + 1) * gw / sw));
+      let r = 0, g = 0, b = 0, sum = 0, count = 0;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const i = y * gw + x;
+          r += guide[i * 4]; g += guide[i * 4 + 1]; b += guide[i * 4 + 2]; sum += p[i]; count++;
+        }
+      }
+      const d = sy * sw + sx;
+      rgb[d * 3] = r / count; rgb[d * 3 + 1] = g / count; rgb[d * 3 + 2] = b / count;
+      small[d] = sum / count;
+    }
+  }
+
+  const soft = new Float32Array(n), near = new Float32Array(n), tmp = new Float32Array(n);
+  for (let i = 0; i < n; i++) soft[i] = small[i] >= 0.08 ? 1 : 0;
+  boxMean(soft, sw, sh, Math.max(3, Math.round(Math.max(sw, sh) * 0.05)), near, tmp);
+
+  const labels = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    if (near[i] <= 0 || small[i] < 0.02) labels[i] = LABEL.BG;
+    else if (small[i] >= 0.9) labels[i] = LABEL.FG;
+    else labels[i] = small[i] >= 0.08 ? LABEL.PROBABLE_FG : LABEL.PROBABLE_BG;
+  }
+  if (!grabCut(rgb, labels, sw, sh)) return p;
+  const zone = expandPromotedRegions(rgb, labels, small, sw, sh);
+
+  const isFg = new Float32Array(n);
+  for (let i = 0; i < n; i++) isFg[i] = labels[i] === LABEL.FG || labels[i] === LABEL.PROBABLE_FG ? 1 : 0;
+  const cut = resampleMask(isFg, sw, sh, gw, gh);
+  const inZone = zone ? resampleMask(zone, sw, sh, gw, gh) : null;
+
+  const N = gw * gh;
+  const fgSeed = new Uint8Array(N), bgSeed = new Uint8Array(N);
+  for (let i = 0; i < N; i++) { if (cut[i] >= 0.5) fgSeed[i] = 1; else bgSeed[i] = 1; }
+  const toFg = distanceToSeeds(fgSeed, gw, gh), toBg = distanceToSeeds(bgSeed, gw, gh);
+
+  const inner = Math.max(2, 2.5 * (gw / sw));
+  const margin = Math.max(3, Math.max(gw, gh) * 0.015);
   for (let i = 0; i < N; i++) {
-    if (p[i] < 0.5 && dist[i] > near) p[i] *= clip01((far - dist[i]) / (far - near));
+    const v = p[i];
+    if (cut[i] >= 0.5) {
+      // Ngoài vùng dày (tóc, lông) giữ nguyên độ mềm của AI để không lấp khe giữa các sợi
+      if (!inZone || inZone[i] < 0.5) continue;
+      // Lõi vùng tiền cảnh thì đặc hẳn; sát đường cắt thì tin AI nếu AI chắc chắn
+      if (toBg[i] >= inner) p[i] = 1;
+      else {
+        const sure = clip01((Math.abs(2 * v - 1) - 0.3) / 0.6);
+        p[i] = sure * v + (1 - sure) * cut[i];
+      }
+    } else {
+      // Giữ phần mềm sát chủ thể (tóc, lông), xa dần thì về 0
+      p[i] = v * clip01(1 - toFg[i] / margin);
+    }
   }
   return p;
 }
@@ -231,57 +330,6 @@ function splitChannels(rgba, N) {
     B[i] = rgba[i * 4 + 2] / 255;
   }
   return { R, G, B };
-}
-
-/**
- * Giảm bóng đổ: điểm mà AI còn phân vân, có cùng sắc độ với nền xung quanh nhưng
- * tối hơn nền thì nhiều khả năng là bóng. Điểm AI đã chắc chắn thì không đụng tới,
- * nên vật thể xám/đen/trắng không bị ảnh hưởng.
- */
-export function softenCastShadow(p, R, G, B, w, h) {
-  const N = w * h;
-  const r = Math.max(8, Math.round(Math.max(w, h) * 0.04));
-  const isBg = new Float32Array(N), tmp = new Float32Array(N);
-  const weight = new Float32Array(N), sum = new Float32Array(N);
-  const bgR = new Float32Array(N), bgG = new Float32Array(N), bgB = new Float32Array(N);
-  let uncertain = 0;
-  for (let i = 0; i < N; i++) {
-    isBg[i] = p[i] <= 0.02 ? 1 : 0;
-    if (p[i] > SURE_LOW && p[i] < 0.85) uncertain++;
-  }
-  if (!uncertain) return p;
-
-  boxMean(isBg, w, h, r, weight, tmp);
-  const channels = [[R, bgR], [G, bgG], [B, bgB]];
-  for (const [src, dst] of channels) {
-    for (let i = 0; i < N; i++) sum[i] = src[i] * isBg[i];
-    boxMean(sum, w, h, r, dst, tmp);
-  }
-
-  for (let i = 0; i < N; i++) {
-    const a = p[i];
-    if (a <= SURE_LOW || a >= 0.85 || weight[i] < 0.05) continue;
-    const wgt = weight[i];
-    const br = bgR[i] / wgt, bg = bgG[i] / wgt, bb = bgB[i] / wgt;
-    const bSum = br + bg + bb, iSum = R[i] + G[i] + B[i];
-    if (bSum < 0.15 || iSum < 1e-3) continue;
-
-    const ratio = iSum / bSum;
-    if (ratio >= 0.98 || ratio < 0.2) continue; // không tối hơn nền, hoặc quá tối để là bóng
-
-    // Bóng làm tối nền nhưng gần như giữ nguyên tỉ lệ màu
-    const dr = R[i] / iSum - br / bSum;
-    const dg = G[i] / iSum - bg / bSum;
-    const db = B[i] / iSum - bb / bSum;
-    const chroma = Math.sqrt(dr * dr + dg * dg + db * db);
-    const match = clip01(1 - chroma / 0.05);
-    if (match <= 0) continue;
-
-    // AI càng chắc thì càng giảm ít, về 0 tại p = 0.85
-    const doubt = clip01((0.85 - a) / 0.45);
-    p[i] = a * (1 - match * doubt);
-  }
-  return p;
 }
 
 /** Guided filter đa kênh màu (He et al.), trả về hệ số tuyến tính cho từng điểm. */
@@ -442,8 +490,8 @@ export function refine({ layers, guide, gw, gh, full, W, H }) {
   const { R, G, B } = splitChannels(guide, N);
 
   let p = composeLayers(layers, gw, gh);
+  p = decideRegions(p, guide, gw, gh);
   p = removeStrayIslands(p, gw, gh);
-  p = softenCastShadow(p, R, G, B, gw, gh);
 
   const scale = Math.max(gw, gh) / 1024;
   const radius = Math.max(3, Math.round(3 * scale));
