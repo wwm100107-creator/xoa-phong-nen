@@ -137,40 +137,36 @@
       <div class="exp-inner">
         <h2>Kiến trúc & Logic Tách Nền Studio UyCut AI 3.0</h2>
         <p class="lead">
-          Để giải quyết triệt để bài toán tách nền khó (như hình dán sticker, bóng đổ phức tạp, lá cây mỏng, chữ viết tay nền tạp), 
-          <b>UyCut AI 3.0</b> được nâng cấp toàn diện với 5 tầng công nghệ:
+          Để tách nền chính xác trên mọi loại ảnh, từ chân dung, thú cưng đến sản phẩm và sticker, 
+          <b>UyCut AI 3.0</b> xử lý qua 5 tầng công nghệ:
         </p>
         <div class="exp-grid">
           <div class="exp-card">
             <span class="step-num">1</span>
-            <h3>Letterbox Aspect-Ratio Preprocessing</h3>
+            <h3>Mô hình RMBG-1.4 bản đầy đủ</h3>
             <p>
-              Ảnh bất kể tỷ lệ ngang/dọc được đệm viền trung tính (Letterbox) về khung chuẩn 1024x1024 
-              trước khi nạp vào AI. Nhờ đó, vật thể <b>không bao giờ bị bóp méo hình học</b>, giúp AI nhận biết hoàn hảo từng cuống lá, mép quả tròn.
+              Ảnh được đưa về đúng chuẩn 1024×1024 như lúc huấn luyện, chạy bằng bản đầy đủ của mô hình để giảm tối đa rác nền. WebAssembly đa luồng giúp mỗi lượt chỉ mất vài giây ngay trên máy của bạn.
             </p>
           </div>
           <div class="exp-card">
             <span class="step-num">2</span>
-            <h3>Dual SOTA AI: RMBG-1.4 & BiRefNet Lite</h3>
+            <h3>Soi cận chủ thể</h3>
             <p>
-              Tích hợp 2 mô hình phân đoạn đối tượng mạnh nhất thế giới (BRIA RMBG-1.4 và BiRefNet Lite đoạt giải ECCV 2024), 
-              chạy trực tiếp trong trình duyệt bằng WebGPU/WASM qua <code>Transformers.js</code>.
+              Khi chủ thể chỉ chiếm một phần nhỏ của ảnh, AI chạy thêm một lượt trên khung cắt sát chủ thể để nhìn rõ đường viền hơn, trong khi vẫn dựa vào kết quả toàn ảnh để không nhận nhầm vật ở xa.
             </p>
           </div>
           <div class="exp-card">
             <span class="step-num">3</span>
-            <h3>Bảo vệ chi tiết tối & Lọc bóng đổ (Deshadow)</h3>
+            <h3>Dọn rác & giảm bóng đổ</h3>
             <p>
-              Cơ chế <b>Solid Subject Protection</b> bảo vệ 100% các chi tiết tối màu (lá cây xanh đậm, tóc, mắt), 
-              ngăn không cho bộ lọc độ sáng làm thủng ruột lá. Đồng thời, thuật toán <b>Smart Deshadow</b> tự động phát hiện và triệt tiêu bóng đen lem dưới đáy.
+              Đốm rác tách rời và lớp mờ xa chủ thể được loại bỏ, còn vật thể thật và chi tiết gần như sợi tóc, khuyên tai vẫn được giữ. Bóng đổ chỉ bị giảm ở vùng AI còn phân vân, nên vật thể đen, xám, trắng không bị ảnh hưởng.
             </p>
           </div>
           <div class="exp-card">
             <span class="step-num">4</span>
-            <h3>Thu gọn viền & Khử lem màu (Edge Trim & Defringe)</h3>
+            <h3>Viền theo màu thật & khử màu nền</h3>
             <p>
-              Thanh trượt <b>Thu gọn viền</b> cho phép bóc tách viền giấy trắng của sticker từ 0 - 6px chỉ trong 10ms. 
-              Công nghệ Defringe triệt tiêu hoàn toàn viền đen bẩn khi xuất ảnh trong suốt.
+              Bộ lọc dẫn hướng đa kênh màu đưa đường viền bám đúng biên trong ảnh. Sau đó màu tiền cảnh được ước lượng lại để viền tóc, lông không còn ám màu của phông cũ khi đặt lên nền mới.
             </p>
           </div>
           <div class="exp-card">

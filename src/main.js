@@ -3,16 +3,17 @@
  * ----------------------------------------------------------------------------
  * Luồng xử lý cho mỗi ảnh:
  *   File ──decodeImage()──► canvas gốc W×H
- *        ──predictMask()──► mặt nạ AI SOTA (RMBG-1.4 hoặc BiRefNet Lite) với Letterbox 1:1
- *        ──refine worker──► canvas kết quả W×H có alpha chuẩn (Solid Subject Protection + Deshadow + Trim)
+ *        ──predictLayers()► mặt nạ RMBG-1.4 toàn ảnh + lượt soi cận chủ thể
+ *        ──refine worker──► canvas kết quả W×H: alpha bám biên màu, viền đã khử màu nền
  *        ──Magic Wand / Brush──► Xóa thông minh 1 chạm hoặc quét cọ thủ công 60fps
  *        ──exportBlob()───► file PNG / WebP / JPG giữ trọn 100% độ phân giải gốc
  */
 import './style.css';
 import { decodeImage, makeCanvas } from './decode.js';
-import { predictMask, resizeHQ, AI_SIZE } from './segment.js';
+import { predictLayers, resizeHQ } from './segment.js';
 
-const GUIDE_MAX = 1536;
+// Lưới tính toán đường viền. Lớn hơn thì viền chi tiết hơn nhưng tốn RAM trong worker.
+const GUIDE_MAX = (navigator.deviceMemory ?? 8) >= 4 ? 2048 : 1280;
 
 // ---------------------------------------------------------------- DOM ELEMENTS
 const $ = (id) => document.getElementById(id);
@@ -68,24 +69,12 @@ function runWorker(payload, transfer) {
   });
 }
 
-function getParams() {
-  return {
-    keepMain: true,
-    refine: true,
-    deshadow: true,
-    trim: 0,
-    radius: 4,
-    low: 0.08,
-    high: 0.92,
-  };
-}
-
 // ---------------------------------------------------------------- XỬ LÝ 1 ẢNH
 async function refineItem(item) {
   const { W, H } = item;
   const full = item.orig.getContext('2d').getImageData(0, 0, W, H).data;
   const res = await runWorker(
-    { mask: item.mask, maskSize: AI_SIZE, guide: item.guide.data, gw: item.gw, gh: item.gh, full, W, H, params: getParams() },
+    { layers: item.layers, guide: item.guide.data, gw: item.gw, gh: item.gh, full, W, H },
     [full.buffer],
   );
   if (!item.result) item.result = makeCanvas(W, H);
@@ -104,11 +93,11 @@ async function refineItem(item) {
 async function runAI(item) {
   setStatus(item, 'ai');
   const t = performance.now();
-  item.mask = await predictMask(item.orig, 'rmbg-1.4', (label, ratio) => {
+  item.layers = await predictLayers(item.orig, (label, ratio) => {
     if (item === selected) showOverlay(label, ratio);
   });
   item.aiMs = performance.now() - t;
-  item.model = 'rmbg-1.4';
+  item.model = item.layers.length > 1 ? 'rmbg-1.4 + soi cận' : 'rmbg-1.4';
 }
 
 async function processItem(item) {
@@ -165,7 +154,7 @@ function addFiles(fileList) {
       status: 'queued',
       orig: null,
       result: null,
-      mask: null,
+      layers: null,
       thumb: new Image(),
       undoStack: [],
     };
@@ -276,7 +265,7 @@ function renderViewer() {
   els.meta.innerHTML = parts.join(' · ');
 
   els.download.disabled = it.status !== 'done';
-  els.rerun.disabled = !it.mask || ['decoding', 'ai', 'refine'].includes(it.status);
+  els.rerun.disabled = !it.layers || ['decoding', 'ai', 'refine'].includes(it.status);
   els.undoBtn.disabled = !it.undoStack?.length;
 
   els.beforeSlot.innerHTML = '';

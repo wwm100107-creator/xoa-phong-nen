@@ -1,30 +1,26 @@
-# ✂️ UyCut AI 4.0 – Tách Nền Cực Hạn Chuẩn Độ Phân Giải Gốc
+# ✂️ UyCut AI – Tách Nền Chuẩn Độ Phân Giải Gốc
 
-Công cụ web tách phông nền ảnh bằng AI hiện đại nhất được thiết kế & phát triển bởi **Uy**, **chạy 100% trên trình duyệt** (Client-side, ảnh không bao giờ gửi lên server), hỗ trợ mọi định dạng ảnh và **bảo toàn 100% độ phân giải gốc của ảnh**.
+Công cụ web tách phông nền ảnh bằng AI được thiết kế & phát triển bởi **Uy**, **chạy 100% trên trình duyệt** (Client-side, ảnh không bao giờ gửi lên server), hỗ trợ mọi định dạng ảnh và **bảo toàn 100% độ phân giải gốc của ảnh**.
 
 - **Website trực tiếp**: [https://xoa-phong-nen.vercel.app](https://xoa-phong-nen.vercel.app)
 - **Mã nguồn GitHub**: [https://github.com/wwm100107-creator/xoa-phong-nen](https://github.com/wwm100107-creator/xoa-phong-nen)
 
 ---
 
-## Tính năng đột phá trong phiên bản 4.0 (Cực Hạn)
+## Cách xử lý
 
-1. **Lọc sạch rác nền & Vật thể thứ cấp (Primary Subject Connected Component Filter)**:
-   - Tự động nhận diện cụm chủ thể chính lớn nhất nằm ở trung tâm ảnh.
-   - Sử dụng phép biến đổi hình thái học (Morphological Opening) cắt đứt các cầu nối bóng đổ mỏng, triệt tiêu 100% các vết ố vàng góc ảnh, các con số, chữ viết tay hay mảnh giấy vụn nền rải rác.
-2. **Triệt tiêu bóng đổ toàn diện (Cast Shadow Annihilator)**:
-   - Quét dải chân đáy của chủ thể, tính toán độ bão hòa màu (Saturation) và độ sáng (Luminance) để hòa tan hoàn toàn các vệt bóng xám/nâu lem nhem vào nền trong suốt.
-3. **Phím tắt thông minh "Bóc viền Sticker" (Sticker Margin Stripper)**:
-   - 1 nhấp chuột để tự động bóc sạch viền giấy trắng die-cut của tem dán, sticker, nhãn hiệu hoặc viền lem nhem, chỉ giữ lại ruột quả/vật thể thuần khiết.
-4. **Chuẩn hóa khung hình Letterbox 1:1 Aspect-Ratio**:
-   - Tránh việc bóp méo hình chữ nhật thành hình vuông 1024×1024 khi nạp vào AI.
-   - Nhờ đệm viền trung tính (Padding), AI nhận dạng chính xác từng cuống lá, độ cong quả cam, viền sticker mà không bị biến dạng hình học.
-5. **Cơ chế Solid Subject Protection (Bảo vệ chi tiết tối)**:
-   - Các chi tiết tối màu (như lá cây xanh đậm, tóc tơ, đồng tử, vân nhám) có xác suất AI $\ge 0.70$ được **bảo vệ 100% độ đặc**, không bao giờ bị rỗng ruột hay trong suốt.
-6. **Dual SOTA AI: RMBG-1.4 Studio & BiRefNet Lite**:
-   - **BRIA RMBG-1.4 Studio** (~44MB): Siêu nhanh, nhận dạng cực nhạy, tiết kiệm RAM.
-   - **BiRefNet Lite** (~114MB - ECCV 2024 DIS Winner): Kiến trúc Bilateral Reference Network cho đường viền mượt mà, siêu sắc nét.
-7. **Bộ công cụ Studio tương tác thời gian thực (60 FPS)**:
+AI quyết định đâu là chủ thể, các bước sau chỉ làm đẹp đường viền. Pipeline không chứa luật màu sắc hay vị trí dành riêng cho một loại ảnh.
+
+1. **BRIA RMBG-1.4 bản đầy đủ (fp32, ~176MB)**: ảnh được co về 1024×1024 đúng như lúc huấn luyện. Bản lượng tử q8 để lọt nhiều rác nền, còn đệm viền letterbox khiến mô hình nhận cả nền thành chủ thể.
+2. **WebAssembly đa luồng**: header COOP/COEP bật cross-origin isolation, mỗi lượt AI chỉ mất khoảng 2-3 giây trên máy nhiều nhân.
+3. **Soi cận chủ thể**: khi chủ thể chiếm phần nhỏ của ảnh, AI chạy thêm một lượt trên khung cắt sát. Lượt này chỉ được sửa vùng quanh đường viền.
+4. **Dọn rác**: bỏ đốm tách rời và lớp mờ xa chủ thể, giữ vật thể thật và chi tiết gần (tóc rời, khuyên tai, chữ cái của logo).
+5. **Giảm bóng đổ thận trọng**: chỉ tác động lên vùng AI còn phân vân, có cùng sắc độ với nền và tối hơn nền.
+6. **Viền chất lượng cao**: guided filter đa kênh màu bám biên thật của ảnh, sau đó ước lượng màu tiền cảnh (Germer et al. 2020) để viền không ám màu phông cũ.
+
+Khi cần chỉnh tay, ví dụ băng dính hay vật gá nằm tách rời mà AI coi là chủ thể, dùng các công cụ dưới đây.
+
+**Bộ công cụ Studio tương tác thời gian thực (60 FPS)**:
    - ⇆ **Kéo so sánh (Compare slider)**: Kéo trước / sau mượt mà.
    - 🪄 **Đũa thần 1 chạm (Magic Wand)**: Bấm 1 nhấp chuột vào bất kỳ vệt bóng, chữ viết tay hay mũi tên thừa để xóa sạch theo vùng màu tương đồng.
    - 🧹 **Cọ xóa (Erase brush)** & 🖌️ **Cọ lấy lại (Restore brush)**: Quét cọ thủ công trực tiếp lên độ phân giải gốc.
@@ -37,10 +33,10 @@ Công cụ web tách phông nền ảnh bằng AI hiện đại nhất được 
 ```mermaid
 flowchart TD
     A["File ảnh gốc bất kỳ (JPG, PNG, HEIC, TIFF, WebP, SVG...)"] --> B["decode.js: Giải mã giữ nguyên kích thước W x H"]
-    B --> C["rmbg.js: Letterbox Padding về 1024x1024 tỷ lệ 1:1"]
-    C --> D["Mô hình SOTA AI (RMBG-1.4 hoặc BiRefNet Lite trên WebGPU/WASM)"]
-    D --> E["Unpad Mask: Trích xuất mặt nạ đúng tỷ lệ gốc"]
-    B --> F["refine.worker.js: Saliency Component Filter + Solid Protection + Deshadow + Trim"]
+    B --> C["segment.js: Co ảnh về 1024x1024, thêm lượt soi cận chủ thể"]
+    C --> D["rmbg.js: RMBG-1.4 fp32 trên WASM đa luồng"]
+    D --> E["Các lớp mặt nạ"]
+    B --> F["refine.core.js: Dọn rác + Giảm bóng + Guided filter màu + Khử màu nền"]
     E --> F
     F --> G["Canvas kết quả W x H (Kênh Alpha chuẩn xác)"]
     G --> H["Bộ công cụ Studio: Magic Wand 1 chạm & Cọ quét 60fps"]

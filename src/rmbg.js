@@ -1,144 +1,74 @@
 /**
- * rmbg.js – CHẠY MÔ HÌNH SOTA (BRIA RMBG-1.4 & BIREFNET LITE) TRÊN TRÌNH DUYỆT
+ * rmbg.js – CHẠY MÔ HÌNH BRIA RMBG-1.4 TRÊN TRÌNH DUYỆT
  * ----------------------------------------------------------------------------
- * Đột phá chất lượng:
- * 1. Letterbox Preprocessing (Bảo toàn tỷ lệ 1:1):
- *    - Không bao giờ bóp méo hình chữ nhật thành hình vuông 1024x1024.
- *    - Chèn viền trung tính (Padding), giúp AI nhận dạng đúng 100% hình thái lá cây, cuống, viền tròn.
- * 2. Unpad Postprocessing:
- *    - Trích xuất lại đúng vùng ảnh gốc sau khi AI suy luận, không lệch 1 pixel.
- * 3. Hỗ trợ 2 mô hình đỉnh cao:
- *    - RMBG-1.4 Studio (~44MB, cực nhanh, tiết kiệm RAM)
- *    - BiRefNet Lite (~114MB, đoạt giải ECCV DIS Challenge, viền siêu sắc nét)
+ * Hai lựa chọn được kiểm chứng bằng ảnh thật, đừng đổi nếu chưa so lại:
+ *   - Dùng bản đầy đủ fp32 (~176MB). Bản lượng tử q8 (~44MB) để lọt nhiều rác nền.
+ *   - Co thẳng ảnh về 1024×1024 đúng như lúc huấn luyện. Đệm viền (letterbox) làm
+ *     mô hình nhận cả nền thành chủ thể.
  */
 import { env, AutoModel, AutoProcessor, RawImage } from '@huggingface/transformers';
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
-const cache = new Map();
+// Cần cross-origin isolation (header COOP/COEP) mới chạy đa luồng được
+if (globalThis.crossOriginIsolated) {
+  env.backends.onnx.wasm.numThreads = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
+}
 
-async function getModel(modelId, onProgress) {
-  if (cache.has(modelId)) return cache.get(modelId);
+export const MODEL_SIZE = 1024;
+const MODEL_ID = 'briaai/RMBG-1.4';
 
-  const isBiRef = modelId.includes('BiRefNet');
-  const label = isBiRef ? 'BiRefNet Lite (~114MB)' : 'RMBG-1.4 Studio (~44MB)';
-  onProgress?.(`Đang tải mô hình ${label}...`, 0.05);
+let loading = null;
 
-  const modelPromise = (async () => {
-    const model = await AutoModel.from_pretrained(modelId, {
-      dtype: isBiRef ? 'fp16' : 'q8',
-      progress_callback: (p) => {
-        if (p.status === 'progress' && p.total) {
-          const ratio = p.loaded / p.total;
-          onProgress?.(`Đang tải ${label}: ${Math.round(ratio * 100)}%`, ratio);
-        }
-      },
+function getModel(onProgress) {
+  if (!loading) {
+    loading = (async () => {
+      onProgress?.('Đang tải mô hình AI (~176MB, chỉ lần đầu)...', 0);
+      const model = await AutoModel.from_pretrained(MODEL_ID, {
+        dtype: 'fp32',
+        device: 'wasm',
+        progress_callback: (p) => {
+          if (p.status === 'progress' && p.total && p.file?.endsWith('.onnx')) {
+            const ratio = p.loaded / p.total;
+            onProgress?.(`Đang tải mô hình AI: ${Math.round(ratio * 100)}%`, ratio);
+          }
+        },
+      });
+      const processor = await AutoProcessor.from_pretrained(MODEL_ID);
+      return { model, processor };
+    })().catch((err) => {
+      loading = null; // cho phép thử lại nếu mạng lỗi
+      throw err;
     });
-    const processor = await AutoProcessor.from_pretrained(modelId);
-    return { model, processor, isBiRef };
-  })();
-
-  cache.set(modelId, modelPromise);
-  return modelPromise;
+  }
+  return loading;
 }
 
 /**
- * Đưa ảnh về khung vuông 1024x1024 có đệm viền trung tính (Letterbox).
+ * Dự đoán mặt nạ cho một canvas.
+ * @returns {Promise<Float32Array>} MODEL_SIZE×MODEL_SIZE, giá trị 0..1
  */
-function createLetterbox(canvas, targetSize = 1024) {
-  const W = canvas.width, H = canvas.height;
-  const s = targetSize / Math.max(W, H);
-  const nw = Math.max(1, Math.round(W * s));
-  const nh = Math.max(1, Math.round(H * s));
-  const dx = Math.round((targetSize - nw) / 2);
-  const dy = Math.round((targetSize - nh) / 2);
+export async function predictWithModel(canvas, onProgress) {
+  const { model, processor } = await getModel(onProgress);
 
-  const lbox = document.createElement('canvas');
-  lbox.width = targetSize;
-  lbox.height = targetSize;
-  const ctx = lbox.getContext('2d', { willReadFrequently: true });
-  ctx.fillStyle = '#808080';
-  ctx.fillRect(0, 0, targetSize, targetSize);
+  const input = document.createElement('canvas');
+  input.width = MODEL_SIZE;
+  input.height = MODEL_SIZE;
+  const ctx = input.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#808080'; // nền cho vùng trong suốt sẵn của ảnh PNG/WebP
+  ctx.fillRect(0, 0, MODEL_SIZE, MODEL_SIZE);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(canvas, dx, dy, nw, nh);
+  ctx.drawImage(canvas, 0, 0, MODEL_SIZE, MODEL_SIZE);
 
-  return { lbox, dx, dy, nw, nh, W, H };
-}
+  const { data } = ctx.getImageData(0, 0, MODEL_SIZE, MODEL_SIZE);
+  const image = new RawImage(new Uint8ClampedArray(data), MODEL_SIZE, MODEL_SIZE, 4).rgb();
+  const { pixel_values } = await processor(image);
+  const output = await model({ input: pixel_values });
+  const values = output[Object.keys(output)[0]].data;
 
-/**
- * Gỡ đệm viền (Unpad) từ tensor 1024x1024 về tỷ lệ của ảnh gốc.
- */
-function unpadMask(tensorData, dx, dy, nw, nh, targetSize = 1024, isBiRef = false) {
-  const c = document.createElement('canvas');
-  c.width = targetSize;
-  c.height = targetSize;
-  const ctx = c.getContext('2d');
-  const d = ctx.createImageData(targetSize, targetSize);
-  const data = d.data;
-
-  for (let i = 0; i < tensorData.length; i++) {
-    let v = tensorData[i];
-    if (isBiRef) {
-      // BiRefNet xuất logit: qua hàm sigmoid
-      v = 1 / (1 + Math.exp(-v));
-    }
-    if (v < 0) v = 0;
-    else if (v > 1) v = 1;
-    const u = Math.round(v * 255);
-    const j = i * 4;
-    data[j] = u;
-    data[j + 1] = u;
-    data[j + 2] = u;
-    data[j + 3] = 255;
-  }
-  ctx.putImageData(d, 0, 0);
-
-  // Cắt đúng hình chữ nhật [dx, dy, nw, nh] và phóng lên 1024x1024 chuẩn
-  const unpad = document.createElement('canvas');
-  unpad.width = targetSize;
-  unpad.height = targetSize;
-  const uctx = unpad.getContext('2d', { willReadFrequently: true });
-  uctx.imageSmoothingEnabled = true;
-  uctx.imageSmoothingQuality = 'high';
-  uctx.drawImage(c, dx, dy, nw, nh, 0, 0, targetSize, targetSize);
-
-  const unpadData = uctx.getImageData(0, 0, targetSize, targetSize).data;
-  const mask = new Uint8Array(targetSize * targetSize);
-  for (let i = 0; i < mask.length; i++) {
-    mask[i] = unpadData[i * 4];
-  }
+  const mask = new Float32Array(MODEL_SIZE * MODEL_SIZE);
+  for (let i = 0; i < mask.length; i++) mask[i] = values[i] < 0 ? 0 : values[i] > 1 ? 1 : values[i];
   return mask;
-}
-
-/**
- * Dự đoán mặt nạ phân đoạn với chuẩn hóa Letterbox.
- */
-export async function predictWithModel(canvas, modelType = 'rmbg-1.4', onProgress) {
-  const modelId = modelType === 'birefnet' ? 'onnx-community/BiRefNet_lite-ONNX' : 'briaai/RMBG-1.4';
-  const { model, processor, isBiRef } = await getModel(modelId, onProgress);
-
-  onProgress?.('AI đang phân tích chi tiết & bóc tách nền...', 0.85);
-
-  // 1. Áp dụng Letterbox để không bị méo tỷ lệ
-  const { lbox, dx, dy, nw, nh } = createLetterbox(canvas, 1024);
-
-  const blob = await new Promise((r) => lbox.toBlob(r, 'image/png'));
-  const url = URL.createObjectURL(blob);
-
-  try {
-    const img = await RawImage.fromURL(url);
-    const { pixel_values } = await processor(img);
-
-    // BiRefNet dùng input_image, RMBG dùng input
-    const inputs = isBiRef ? { input_image: pixel_values } : { input: pixel_values };
-    const output = await model(inputs);
-    const tensor = output[Object.keys(output)[0]];
-
-    // 2. Unpad mặt nạ về đúng tỷ lệ của ảnh gốc
-    return unpadMask(tensor.data, dx, dy, nw, nh, 1024, isBiRef);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
 }
