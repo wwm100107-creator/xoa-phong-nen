@@ -98,6 +98,11 @@
                 <label for="wandTolRange">Độ nhạy đũa: <b id="wandTolVal">35</b></label>
                 <input id="wandTolRange" type="range" min="10" max="90" value="35" />
               </span>
+              <span id="zoomWrap" class="zoom-ctl hidden">
+                <button id="zoomOutBtn" title="Thu nhỏ">−</button>
+                <button id="zoomResetBtn" class="zoom-val" title="Bấm để về vừa khung">100%</button>
+                <button id="zoomInBtn" title="Phóng to">+</button>
+              </span>
               <button id="peekBtn" class="peek-btn hidden" title="Giữ phím này để hiện mờ ảnh gốc bên dưới. Bấm để đổi sang phím hoặc nút chuột khác."></button>
               <button id="undoBtn" class="ghost-btn-sm" disabled title="Hoàn tác thao tác vừa vẽ">↩️ Hoàn tác</button>
               <button id="resetBrushBtn" class="ghost-btn-sm" title="Khôi phục lại kết quả AI ban đầu">↺ Đặt lại AI</button>
@@ -111,8 +116,8 @@
               <span class="tag tag-before">Trước</span>
               <span class="tag tag-after">Sau</span>
               <div class="divider" id="divider"><span>⇆</span></div>
-              <div id="brushCursor" class="brush-cursor hidden"></div>
             </div>
+            <div id="brushCursor" class="brush-cursor hidden"></div>
             <div class="overlay hidden" id="overlay">
               <div class="spinner"></div>
               <p id="overlayText">Đang xử lý…</p>

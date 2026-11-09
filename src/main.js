@@ -11,7 +11,8 @@
 import './style.css';
 import { decodeImage, makeCanvas } from './decode.js';
 import { predictLayers, resizeHQ } from './segment.js';
-import { createPeek } from './peek.js';
+import { createPeek, isTypingTarget } from './peek.js';
+import { createZoom } from './zoom.js';
 
 // Lưới tính toán đường viền. Lớn hơn thì viền chi tiết hơn nhưng tốn RAM trong worker.
 const GUIDE_MAX = (navigator.deviceMemory ?? 8) >= 4 ? 2048 : 1280;
@@ -34,7 +35,8 @@ const els = {
   brushSizeWrap: $('brushSizeWrap'), brushSize: $('brushSizeRange'), brushSizeVal: $('brushSizeVal'),
   wandTolWrap: $('wandTolWrap'), wandTol: $('wandTolRange'), wandTolVal: $('wandTolVal'),
   undoBtn: $('undoBtn'), resetBrushBtn: $('resetBrushBtn'), brushCursor: $('brushCursor'),
-  peekBtn: $('peekBtn'),
+  peekBtn: $('peekBtn'), stage: $('stage'),
+  zoomWrap: $('zoomWrap'), zoomIn: $('zoomInBtn'), zoomOut: $('zoomOutBtn'), zoomReset: $('zoomResetBtn'),
 };
 
 // ---------------------------------------------------------------- TRẠNG THÁI
@@ -221,6 +223,7 @@ function setStatus(it, status) {
 }
 
 function selectItem(it) {
+  if (it !== selected) zoom.reset();
   selected = it;
   items.forEach((i) => updateQueueItem(i));
   renderViewer();
@@ -320,9 +323,11 @@ function setTool(tool) {
   els.brushSizeWrap.classList.toggle('hidden', tool === 'compare' || tool === 'wand');
   els.wandTolWrap.classList.toggle('hidden', tool !== 'wand');
   els.peekBtn.classList.toggle('hidden', tool === 'compare');
+  els.zoomWrap.classList.toggle('hidden', tool === 'compare');
 
   if (tool === 'compare') {
     els.brushCursor.classList.add('hidden');
+    zoom.reset();
     setSplit(50);
   } else if (tool === 'wand') {
     els.brushCursor.classList.add('hidden');
@@ -336,7 +341,9 @@ function setTool(tool) {
 }
 
 function renderStageHint() {
-  const peekHint = ` Giữ <b>${peek.label}</b> để hiện mờ ảnh gốc bên dưới.`;
+  const panWith = peek.usesKey('Space') ? 'chuột giữa' : 'dấu cách';
+  const peekHint = ` Lăn chuột để phóng to, giữ <b>${panWith}</b> rồi kéo để di chuyển ảnh.`
+    + ` Giữ <b>${peek.label}</b> để hiện mờ ảnh gốc bên dưới.`;
   els.stageHint.innerHTML = {
     compare: 'Kéo thanh giữa để so sánh <b>Trước</b> / <b>Sau</b>.',
     wand: `🪄 Bấm <b>1 nhấp</b> vào vùng bóng đổ, chữ hoặc chi tiết thừa để xóa thông minh tức thì.${peekHint}`,
@@ -372,6 +379,66 @@ const peek = createPeek({
   onBindingChange: renderStageHint,
 });
 
+// ---------------------------------------------------------------- PHÓNG TO & DI CHUYỂN ẢNH
+const isEditing = () => currentTool !== 'compare' && !!selected?.result;
+
+const zoom = createZoom({
+  stage: els.stage,
+  target: els.compare,
+  getSourceWidth: () => selected?.W || 1,
+  onChange: (scale) => { els.zoomReset.textContent = `${Math.round(scale * 100)}%`; },
+});
+
+let spaceHeld = false;
+let panning = null;
+
+function setSpaceHeld(value) {
+  spaceHeld = value;
+  els.compare.classList.toggle('can-pan', value);
+  if (value) els.brushCursor.classList.add('hidden');
+}
+
+function startPan(e) {
+  panning = { x: e.clientX, y: e.clientY };
+  els.compare.classList.add('panning');
+  els.brushCursor.classList.add('hidden');
+  els.compare.setPointerCapture(e.pointerId);
+}
+
+function stopPan() {
+  panning = null;
+  els.compare.classList.remove('panning');
+}
+
+els.zoomIn.addEventListener('click', () => zoom.zoomCenter(1.5));
+els.zoomOut.addEventListener('click', () => zoom.zoomCenter(1 / 1.5));
+els.zoomReset.addEventListener('click', () => zoom.reset());
+window.addEventListener('resize', () => zoom.refresh());
+
+// Giữ Ctrl rồi lăn chuột vẫn phải zoom ảnh, không được zoom cả trang
+els.stage.addEventListener('wheel', (e) => {
+  if (!isEditing()) return;
+  e.preventDefault();
+  const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+  zoom.zoomAt(e.clientX, e.clientY, Math.exp(-delta * 0.0018));
+}, { passive: false });
+
+els.stage.addEventListener('mousedown', (e) => {
+  if (e.button === 1 && isEditing()) e.preventDefault(); // không bật chế độ tự cuộn trang
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Space' || !isEditing() || peek.usesKey('Space') || isTypingTarget(e.target)) return;
+  e.preventDefault(); // không cuộn trang, không bấm lại nút đang được focus
+  if (!spaceHeld) setSpaceHeld(true);
+});
+window.addEventListener('keyup', (e) => {
+  if (e.code !== 'Space' || !spaceHeld) return;
+  e.preventDefault();
+  setSpaceHeld(false);
+});
+window.addEventListener('blur', () => setSpaceHeld(false));
+
 function updateBrushCursorSize() {
   const size = +els.brushSize.value;
   els.brushSizeVal.textContent = size + 'px';
@@ -399,7 +466,7 @@ function getCanvasCoords(e) {
   const x = (e.clientX - rect.left) * scaleX;
   const y = (e.clientY - rect.top) * scaleY;
   const radius = (+els.brushSize.value / 2) * Math.max(scaleX, scaleY);
-  return { x, y, radius, px: Math.round(x), py: Math.round(y) };
+  return { x, y, radius, px: Math.floor(x), py: Math.floor(y) };
 }
 
 function saveUndo() {
@@ -493,6 +560,11 @@ function paint(e) {
 }
 
 els.compare.addEventListener('pointerdown', (e) => {
+  const middlePan = e.button === 1 && !peek.usesMouseButton(1);
+  if (currentTool !== 'compare' && (middlePan || (e.button === 0 && spaceHeld))) {
+    startPan(e);
+    return;
+  }
   if (e.button !== 0) return; // chuột phải, chuột giữa có thể đang được gán để xem ảnh gốc
   if (currentTool === 'compare') {
     dragging = true;
@@ -510,13 +582,18 @@ els.compare.addEventListener('pointerdown', (e) => {
 });
 
 els.compare.addEventListener('pointermove', (e) => {
+  if (panning) {
+    zoom.panBy(e.clientX - panning.x, e.clientY - panning.y);
+    panning = { x: e.clientX, y: e.clientY };
+    return;
+  }
   if (currentTool === 'compare') {
     if (dragging) moveSplit(e);
   } else if (currentTool === 'restore' || currentTool === 'erase') {
-    const r = els.compare.getBoundingClientRect();
+    const r = els.stage.getBoundingClientRect();
     els.brushCursor.style.left = (e.clientX - r.left) + 'px';
     els.brushCursor.style.top = (e.clientY - r.top) + 'px';
-    els.brushCursor.classList.remove('hidden');
+    els.brushCursor.classList.toggle('hidden', spaceHeld);
     if (isBrushing) paint(e);
   }
 });
@@ -525,7 +602,9 @@ els.compare.addEventListener('pointerleave', () => {
   els.brushCursor.classList.add('hidden');
 });
 
+els.compare.addEventListener('pointercancel', stopPan);
 els.compare.addEventListener('pointerup', () => {
+  stopPan();
   dragging = false;
   if (isBrushing) {
     isBrushing = false;

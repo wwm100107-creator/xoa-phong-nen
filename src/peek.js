@@ -45,7 +45,7 @@ function saveBinding(binding) {
 }
 
 /** Đang gõ trong ô nhập thì phím thuộc về ô đó; thanh trượt vẫn cho phép xem ảnh gốc. */
-const isTypingTarget = (target) => target?.matches?.('input:not([type=range]), select, textarea');
+export const isTypingTarget = (target) => target?.matches?.('input:not([type=range]), select, textarea');
 
 /**
  * @param {object} options
@@ -165,5 +165,7 @@ export function createPeek({ button, stage, isAvailable, onHoldChange, onBinding
   return {
     get held() { return held; },
     get label() { return labelOf(binding); },
+    usesKey: (key) => binding.kind === 'key' && binding.key === key,
+    usesMouseButton: (button) => binding.kind === 'mouse' && binding.button === button,
   };
 }
