@@ -1,27 +1,25 @@
 /**
- * main.js – ĐIỀU PHỐI TOÀN BỘ ỨNG DỤNG
+ * main.js – ĐIỀU PHỐI TOÀN BỘ ỨNG DỤNG UYCUT AI
  * ----------------------------------------------------------------------------
- * Luồng xử lý cho mỗi ảnh (chạy tuần tự theo hàng đợi để không tràn RAM):
- *
+ * Luồng xử lý cho mỗi ảnh:
  *   File ──decodeImage()──► canvas gốc W×H
- *        ──predictMask()──► mặt nạ AI 1024×1024        (bước nặng, chỉ chạy 1 lần)
- *        ──refine worker──► canvas kết quả W×H có alpha (chạy lại mỗi khi chỉnh thanh trượt)
+ *        ──predictMask()──► mặt nạ AI (RMBG-1.4 hoặc IS-Net)
+ *        ──refine worker──► canvas kết quả W×H có alpha chuẩn (Uncertainty Band)
+ *        ──Touch-up Brush─► Khôi phục / Xóa chi tiết thủ công ngay tức thì
  *        ──exportBlob()───► file PNG / WebP / JPG đúng W×H
- *
- * Mặt nạ AI và ảnh "dẫn đường" (guide) được lưu lại, nên khi người dùng kéo các
- * thanh trượt tinh chỉnh, ta chỉ chạy lại bước refine (vài trăm ms) – không cần AI.
  */
 import './style.css';
 import { decodeImage, makeCanvas } from './decode.js';
 import { predictMask, resizeHQ, AI_SIZE } from './segment.js';
 
-const GUIDE_MAX = 1536; // cạnh dài tối đa của lưới tính hệ số Guided Filter
+const GUIDE_MAX = 1536;
 
 // ---------------------------------------------------------------- DOM
 const $ = (id) => document.getElementById(id);
 const els = {
   drop: $('dropzone'), input: $('fileInput'), model: $('modelSelect'),
   refine: $('refineToggle'), radius: $('radiusRange'), low: $('lowRange'), high: $('highRange'),
+  thresh: $('threshRange'), threshVal: $('threshVal'),
   radiusVal: $('radiusVal'), lowVal: $('lowVal'), highVal: $('highVal'),
   bgOptions: $('bgOptions'), bgColor: $('bgColor'), format: $('formatSelect'),
   empty: $('emptyState'), viewer: $('viewer'), meta: $('metaInfo'),
@@ -29,6 +27,10 @@ const els = {
   beforeSlot: $('beforeSlot'), afterWrap: $('afterWrap'), divider: $('divider'),
   overlay: $('overlay'), overlayText: $('overlayText'), bar: $('progressBar'),
   queue: $('queue'), queueHead: $('queueHead'), downloadAll: $('downloadAllBtn'), clear: $('clearBtn'),
+  // Bộ công cụ Cọ chỉnh sửa thủ công
+  modeCompare: $('modeCompareBtn'), modeRestore: $('modeRestoreBtn'), modeErase: $('modeEraseBtn'),
+  brushParams: $('brushParams'), brushSize: $('brushSizeRange'), brushSizeVal: $('brushSizeVal'),
+  undoBtn: $('undoBtn'), resetBrushBtn: $('resetBrushBtn'), brushCursor: $('brushCursor'),
 };
 
 // ---------------------------------------------------------------- TRẠNG THÁI
@@ -37,6 +39,8 @@ const items = [];
 let selected = null;
 let background = 'transparent';
 let seq = 0;
+let currentTool = 'compare'; // 'compare' | 'restore' | 'erase'
+let isBrushing = false;
 
 const STATUS = {
   queued: 'Đang chờ', decoding: 'Đang đọc ảnh', ai: 'AI đang xử lý',
@@ -44,7 +48,6 @@ const STATUS = {
 };
 
 // ---------------------------------------------------------------- WEB WORKER
-// Mỗi yêu cầu có id riêng; Promise được giải quyết khi worker trả kết quả cùng id.
 const worker = new Worker(new URL('./refine.worker.js', import.meta.url), { type: 'module' });
 const pending = new Map();
 let reqId = 0;
@@ -62,35 +65,43 @@ function runWorker(payload, transfer) {
   });
 }
 
-/** Đọc giá trị các thanh trượt → tham số cho worker. */
 function getParams() {
+  const t = +els.thresh.value / 100; // 0.1 .. 0.9 (mặc định 0.5)
+  const delta = (0.5 - t) * 0.35; // Khi t cao (muốn lấy nhiều viền/lá): delta âm -> low và high giảm
+  const lowOffset = +els.low.value / 100;
+  const highOffset = +els.high.value / 100;
+  const low = Math.max(0, Math.min(0.45, lowOffset + delta));
+  const high = Math.max(0.55, Math.min(1, highOffset + delta));
+
   return {
     refine: els.refine.checked,
     radius: +els.radius.value,
-    low: +els.low.value / 100,
-    high: +els.high.value / 100,
+    low,
+    high,
   };
 }
 
 // ---------------------------------------------------------------- XỬ LÝ 1 ẢNH
-/**
- * Bước refine: lấy điểm ảnh gốc (W×H), gửi sang worker cùng mặt nạ & guide,
- * nhận lại cùng mảng điểm ảnh nhưng kênh alpha đã được tính → vẽ ra canvas kết quả.
- */
 async function refineItem(item) {
   const { W, H } = item;
   const full = item.orig.getContext('2d').getImageData(0, 0, W, H).data;
   const res = await runWorker(
     { mask: item.mask, maskSize: AI_SIZE, guide: item.guide.data, gw: item.gw, gh: item.gh, full, W, H, params: getParams() },
-    [full.buffer], // chuyển quyền sở hữu bộ nhớ (không sao chép) → nhanh, tiết kiệm RAM
+    [full.buffer],
   );
   if (!item.result) item.result = makeCanvas(W, H);
   item.result.getContext('2d').putImageData(new ImageData(res.full, W, H), 0, 0);
+
+  // Lưu bản snapshot AI ban đầu để có thể Reset khi dùng Cọ
+  item.aiSnapshot = makeCanvas(W, H);
+  item.aiSnapshot.getContext('2d').drawImage(item.result, 0, 0);
+  item.undoStack = [];
+  if (item === selected) els.undoBtn.disabled = true;
+
   item.refineMs = res.ms;
   item.dirty = false;
 }
 
-/** Chạy AI (tốn thời gian nhất) và lưu lại mặt nạ để tái sử dụng. */
 async function runAI(item) {
   setStatus(item, 'ai');
   const t = performance.now();
@@ -103,22 +114,18 @@ async function runAI(item) {
 
 async function processItem(item) {
   try {
-    // 1) Giải mã ở độ phân giải gốc
     setStatus(item, 'decoding');
     const { canvas, width, height, format } = await decodeImage(item.file);
-    Object.assign(item, { orig: canvas, W: width, H: height, format });
+    Object.assign(item, { orig: canvas, W: width, H: height, format, undoStack: [] });
     item.thumb.src = resizeHQ(canvas, ...fit(width, height, 120)).toDataURL();
 
-    // 2) Ảnh dẫn đường (guide) cho Guided Filter: bản thu nhỏ đúng tỉ lệ, cạnh dài ≤ 1536
     const [gw, gh] = fit(width, height, GUIDE_MAX);
     Object.assign(item, { gw, gh });
     item.guide = resizeHQ(canvas, gw, gh).getContext('2d').getImageData(0, 0, gw, gh);
     if (item === selected) renderViewer();
 
-    // 3) AI → mặt nạ 1024×1024
     await runAI(item);
 
-    // 4) Phóng mặt nạ về W×H bằng Guided Filter + ghép alpha
     setStatus(item, 'refine');
     await refineItem(item);
     setStatus(item, 'done');
@@ -132,7 +139,6 @@ async function processItem(item) {
   updateBulkButtons();
 }
 
-/** Hàng đợi: xử lý lần lượt từng ảnh (tránh chạy song song nhiều ảnh lớn gây tràn RAM). */
 let running = false;
 async function pump() {
   if (running) return;
@@ -142,7 +148,6 @@ async function pump() {
   running = false;
 }
 
-/** Thu nhỏ (w,h) cho vừa cạnh dài max, giữ tỉ lệ, không phóng to. */
 function fit(w, h, max) {
   const k = Math.min(1, max / Math.max(w, h));
   return [Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k))];
@@ -201,7 +206,7 @@ function setStatus(item, status) {
 
 function removeItem(item) {
   const idx = items.indexOf(item);
-  if (idx < 0 || ['decoding', 'ai', 'refine'].includes(item.status)) return; // không xóa khi đang xử lý
+  if (idx < 0 || ['decoding', 'ai', 'refine'].includes(item.status)) return;
   items.splice(idx, 1);
   item.li.remove();
   if (selected === item) { selected = null; select(items[Math.min(idx, items.length - 1)]); }
@@ -218,6 +223,7 @@ async function select(item) {
     await refineItem(selected);
     hideOverlay();
   }
+  setTool(currentTool);
   renderViewer();
 }
 
@@ -227,7 +233,6 @@ function renderViewer() {
   els.viewer.classList.toggle('hidden', !it);
   if (!it) return;
 
-  // Gắn trực tiếp canvas gốc & canvas kết quả vào khung so sánh (không tạo bản sao)
   els.beforeSlot.replaceChildren(...(it.orig ? [it.orig] : []));
   els.afterWrap.replaceChildren(...(it.result ? [it.result] : []));
   els.afterWrap.style.display = it.result ? '' : 'none';
@@ -235,12 +240,15 @@ function renderViewer() {
   const parts = [`<b>${escapeHtml(it.name)}</b>`];
   if (it.W) parts.push(`Gốc: ${it.W}×${it.H}px`);
   if (it.result) parts.push(`Kết quả: <span class="ok">${it.result.width}×${it.result.height}px ✓</span>`);
+  if (it.model) parts.push(`Mô hình: ${it.model}`);
   if (it.aiMs) parts.push(`AI ${(it.aiMs / 1000).toFixed(1)}s · viền ${Math.round(it.refineMs)}ms`);
   if (it.status === 'error') parts.push(`<span class="err">Lỗi: ${escapeHtml(it.error)}</span>`);
   els.meta.innerHTML = parts.join(' · ');
 
   els.download.disabled = it.status !== 'done';
   els.rerun.disabled = !it.mask || ['decoding', 'ai', 'refine'].includes(it.status);
+  els.undoBtn.disabled = !(it.undoStack && it.undoStack.length > 0);
+
   if (['decoding', 'ai', 'refine'].includes(it.status)) showOverlay(STATUS[it.status] + '…', null);
   else if (it.status === 'queued') showOverlay('Đang chờ tới lượt…', null);
   else hideOverlay();
@@ -254,7 +262,7 @@ function showOverlay(text, ratio) {
 }
 function hideOverlay() { els.overlay.classList.add('hidden'); }
 
-/** Thanh so sánh Trước/Sau: dùng clip-path để cắt lớp "Sau" theo vị trí chuột. */
+// ---------------------------------------------------------------- THANH KÉO SO SÁNH
 function setSplit(pct) {
   pct = Math.max(0, Math.min(100, pct));
   els.afterWrap.style.clipPath = `inset(0 0 0 ${pct}%)`;
@@ -265,19 +273,157 @@ const moveSplit = (e) => {
   const r = els.compare.getBoundingClientRect();
   setSplit(((e.clientX - r.left) / r.width) * 100);
 };
-els.compare.addEventListener('pointerdown', (e) => { dragging = true; els.compare.setPointerCapture(e.pointerId); moveSplit(e); });
-els.compare.addEventListener('pointermove', (e) => dragging && moveSplit(e));
-els.compare.addEventListener('pointerup', () => (dragging = false));
-setSplit(50);
+
+// ---------------------------------------------------------------- BỘ CÔNG CỤ CỌ (TOUCH-UP)
+function setTool(tool) {
+  currentTool = tool;
+  els.modeCompare.classList.toggle('active', tool === 'compare');
+  els.modeRestore.classList.toggle('active', tool === 'restore');
+  els.modeErase.classList.toggle('active', tool === 'erase');
+
+  if (tool === 'compare') {
+    els.compare.classList.remove('brush-mode');
+    els.brushParams.classList.add('hidden');
+    els.brushCursor.classList.add('hidden');
+    setSplit(50);
+  } else {
+    els.compare.classList.add('brush-mode');
+    els.brushParams.classList.remove('hidden');
+    els.afterWrap.style.clipPath = 'none'; // hiển thị trọn vẹn kết quả để chỉnh sửa
+    updateBrushCursorSize();
+  }
+}
+
+function updateBrushCursorSize() {
+  const size = +els.brushSize.value;
+  els.brushSizeVal.textContent = size + 'px';
+  els.brushCursor.style.width = size + 'px';
+  els.brushCursor.style.height = size + 'px';
+}
+
+els.modeCompare.addEventListener('click', () => setTool('compare'));
+els.modeRestore.addEventListener('click', () => setTool('restore'));
+els.modeErase.addEventListener('click', () => setTool('erase'));
+els.brushSize.addEventListener('input', updateBrushCursorSize);
+
+// Thao tác vẽ trên Stage (Compare hoặc Cọ)
+function getCanvasCoords(e) {
+  const canvas = els.beforeSlot.querySelector('canvas');
+  if (!canvas) return null;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = selected.W / rect.width;
+  const scaleY = selected.H / rect.height;
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+  const radius = (+els.brushSize.value / 2) * Math.max(scaleX, scaleY);
+  return { x, y, radius };
+}
+
+function paint(e) {
+  if (!selected?.result || !selected?.orig) return;
+  const coords = getCanvasCoords(e);
+  if (!coords) return;
+  const { x, y, radius } = coords;
+  const ctx = selected.result.getContext('2d');
+
+  if (currentTool === 'restore') {
+    // Khôi phục chi tiết ảnh gốc
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(selected.orig, 0, 0);
+    ctx.restore();
+  } else if (currentTool === 'erase') {
+    // Xóa thành trong suốt
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+els.compare.addEventListener('pointerdown', (e) => {
+  if (currentTool === 'compare') {
+    dragging = true;
+    els.compare.setPointerCapture(e.pointerId);
+    moveSplit(e);
+  } else if (selected?.result) {
+    isBrushing = true;
+    els.compare.setPointerCapture(e.pointerId);
+
+    // Lưu snapshot vào undo stack
+    if (!selected.undoStack) selected.undoStack = [];
+    if (selected.undoStack.length >= 15) selected.undoStack.shift();
+    const snap = makeCanvas(selected.W, selected.H);
+    snap.getContext('2d').drawImage(selected.result, 0, 0);
+    selected.undoStack.push(snap);
+    els.undoBtn.disabled = false;
+
+    paint(e);
+  }
+});
+
+els.compare.addEventListener('pointermove', (e) => {
+  if (currentTool === 'compare') {
+    if (dragging) moveSplit(e);
+  } else {
+    // Cập nhật con trỏ tròn
+    const r = els.compare.getBoundingClientRect();
+    const cx = e.clientX - r.left;
+    const cy = e.clientY - r.top;
+    els.brushCursor.style.left = cx + 'px';
+    els.brushCursor.style.top = cy + 'px';
+    els.brushCursor.classList.remove('hidden');
+
+    if (isBrushing) paint(e);
+  }
+});
+
+els.compare.addEventListener('pointerleave', () => {
+  if (currentTool !== 'compare') els.brushCursor.classList.add('hidden');
+});
+
+els.compare.addEventListener('pointerup', () => {
+  dragging = false;
+  if (isBrushing) {
+    isBrushing = false;
+    if (selected?.result) {
+      selected.thumb.src = resizeHQ(selected.result, ...fit(selected.W, selected.H, 120)).toDataURL();
+    }
+  }
+});
+
+els.undoBtn.addEventListener('click', () => {
+  if (!selected?.undoStack?.length) return;
+  const prev = selected.undoStack.pop();
+  const ctx = selected.result.getContext('2d');
+  ctx.clearRect(0, 0, selected.W, selected.H);
+  ctx.drawImage(prev, 0, 0);
+  els.undoBtn.disabled = selected.undoStack.length === 0;
+  selected.thumb.src = resizeHQ(selected.result, ...fit(selected.W, selected.H, 120)).toDataURL();
+});
+
+els.resetBrushBtn.addEventListener('click', () => {
+  if (!selected?.aiSnapshot) return;
+  // Lưu trạng thái hiện tại vào undo trước khi reset
+  const snap = makeCanvas(selected.W, selected.H);
+  snap.getContext('2d').drawImage(selected.result, 0, 0);
+  selected.undoStack.push(snap);
+  els.undoBtn.disabled = false;
+
+  const ctx = selected.result.getContext('2d');
+  ctx.clearRect(0, 0, selected.W, selected.H);
+  ctx.drawImage(selected.aiSnapshot, 0, 0);
+  selected.thumb.src = resizeHQ(selected.result, ...fit(selected.W, selected.H, 120)).toDataURL();
+});
 
 // ---------------------------------------------------------------- TINH CHỈNH (thanh trượt)
-/**
- * Khi đổi thanh trượt: chỉ chạy lại bước refine cho ảnh đang xem (nhanh).
- * Các ảnh khác được đánh dấu "dirty" và sẽ áp dụng khi được chọn hoặc tải về.
- * Có debounce + cờ "busy" để không dồn hàng trăm yêu cầu khi kéo thanh trượt.
- */
 let refineTimer, refining = false, refineAgain = false;
 function onParamsChange() {
+  els.threshVal.textContent = els.thresh.value + '%';
   els.radiusVal.textContent = els.radius.value;
   els.lowVal.textContent = els.low.value + '%';
   els.highVal.textContent = els.high.value + '%';
@@ -295,7 +441,7 @@ async function refineSelected() {
   if (refineAgain) { refineAgain = false; refineSelected(); }
 }
 ['input', 'change'].forEach((ev) => {
-  [els.radius, els.low, els.high, els.refine].forEach((el) => el.addEventListener(ev, onParamsChange));
+  [els.thresh, els.radius, els.low, els.high, els.refine].forEach((el) => el.addEventListener(ev, onParamsChange));
 });
 
 els.rerun.addEventListener('click', async () => {
@@ -327,11 +473,6 @@ els.bgColor.addEventListener('input', () => {
   setBackground(els.bgColor.value);
 });
 
-/**
- * Xuất file ĐÚNG kích thước gốc W×H.
- * - PNG/WebP + nền trong suốt: mã hóa thẳng canvas kết quả.
- * - Có màu nền hoặc JPG: tạo canvas W×H, tô màu nền, vẽ kết quả lên trên.
- */
 async function exportBlob(item) {
   if (item.dirty) await refineItem(item);
   const type = els.format.value;
@@ -365,7 +506,7 @@ els.download.addEventListener('click', () => download(selected));
 els.downloadAll.addEventListener('click', async () => {
   for (const it of items.filter((i) => i.status === 'done')) {
     await download(it);
-    await new Promise((r) => setTimeout(r, 400)); // giãn cách để trình duyệt không chặn tải nhiều file
+    await new Promise((r) => setTimeout(r, 400));
   }
 });
 els.clear.addEventListener('click', () => [...items].forEach(removeItem));
@@ -374,7 +515,7 @@ function updateBulkButtons() {
   els.downloadAll.disabled = !items.some((i) => i.status === 'done');
 }
 
-// ---------------------------------------------------------------- NHẬP ẢNH: chọn / kéo thả / dán
+// ---------------------------------------------------------------- NHẬP ẢNH
 els.input.addEventListener('change', () => { addFiles(els.input.files); els.input.value = ''; });
 ['dragenter', 'dragover'].forEach((ev) => document.addEventListener(ev, (e) => { e.preventDefault(); els.drop.classList.add('drag'); }));
 ['dragleave', 'drop'].forEach((ev) => document.addEventListener(ev, (e) => { e.preventDefault(); if (ev === 'drop' || !e.relatedTarget) els.drop.classList.remove('drag'); }));

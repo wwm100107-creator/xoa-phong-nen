@@ -4,15 +4,17 @@ Công cụ web xóa phông nền ảnh bằng AI phát triển bởi **Uy**, **c
 
 ## Tính năng
 
-- Hỗ trợ: **JPG, PNG, WebP, AVIF, GIF, BMP, ICO, SVG, HEIC/HEIF (ảnh iPhone), TIFF**
-- Giữ nguyên độ phân giải: ảnh 6000×4000 vào → ảnh 6000×4000 ra
-- Tinh chỉnh viền bằng **Guided Filter** bám theo chi tiết ảnh gốc (tóc, lông thú…)
-- Thanh trượt chỉnh viền theo thời gian thực (không cần chạy lại AI)
-- So sánh Trước/Sau bằng thanh kéo
-- Nền xuất ra: trong suốt, màu có sẵn, hoặc màu tùy chọn
-- Xuất PNG (không mất dữ liệu), WebP, JPG
-- Xử lý nhiều ảnh cùng lúc (hàng đợi), kéo thả, dán Ctrl+V
-- Tự dùng **WebGPU** nếu có, nếu không thì chạy bằng WebAssembly (CPU)
+- **Mô hình SOTA BRIA RMBG-1.4**: Nhận diện siêu chuẩn xác mọi chi tiết phức tạp (lá cây, cuống quả, viền sticker, tóc tơ, nhiều chủ thể).
+- **Bộ công cụ Cọ thủ công (Interactive Touch-up)**:
+  - 🖌️ **Lấy lại chi tiết (Restore brush)**: Tô vào đâu khôi phục lại phần ảnh gốc bị cắt thiếu ngay lập tức.
+  - 🧹 **Xóa phần thừa (Erase brush)**: Quẹt để xóa sạch bóng đổ, chữ hoặc chi tiết nền còn sót.
+  - ↩️ **Hoàn tác (Undo)** nét cọ và ↺ **Đặt lại AI**.
+- **Giữ nguyên độ phân giải**: Ảnh 6000×4000 vào → ảnh 6000×4000 ra.
+- **Guided Filter kết hợp Uncertainty Band**: Chống lem chữ hoặc viền nền vào chủ thể.
+- **Thanh trượt Độ nhạy tách nền & Tinh chỉnh viền** theo thời gian thực.
+- Hỗ trợ: **JPG, PNG, WebP, AVIF, GIF, BMP, ICO, SVG, HEIC/HEIF (iPhone), TIFF**.
+- Nền xuất ra: trong suốt, màu tùy chọn, hoặc xuất PNG (Lossless), WebP, JPG.
+- Tự động tận dụng **WebGPU** (GPU tăng tốc phần cứng), tự lùi về WebAssembly.
 
 ## Chạy trên máy
 

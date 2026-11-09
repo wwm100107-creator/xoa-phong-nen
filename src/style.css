@@ -142,6 +142,31 @@ input[type=range]:disabled { opacity: .4; }
 .meta .err { color: var(--err); }
 .actions { display: flex; gap: 8px; }
 
+/* ---------------- Thanh công cụ Cọ ---------------- */
+.brush-bar {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 12px; background: var(--panel-2); border-radius: 10px; margin-bottom: 12px;
+  border: 1px solid var(--line);
+}
+.brush-modes { display: flex; gap: 6px; }
+.tool-chip {
+  background: transparent; color: var(--muted); border: 1px solid transparent;
+  padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; gap: 6px; transition: .15s;
+}
+.tool-chip:hover { color: var(--text); background: rgba(255, 255, 255, .05); }
+.tool-chip.active {
+  color: #fff; background: rgba(124, 92, 255, .25); border-color: rgba(124, 92, 255, .5);
+}
+.brush-params { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.brush-params input[type=range] { width: 100px; }
+.brush-params b { color: var(--accent-2); }
+.ghost-btn-sm {
+  background: transparent; border: 1px solid var(--line); color: var(--text);
+  padding: 5px 10px; border-radius: 6px; font-size: 12px;
+}
+.ghost-btn-sm:hover:not(:disabled) { border-color: var(--accent); }
+
 .stage {
   position: relative; display: grid; place-items: center; min-height: 320px;
   background: #0e1118; border-radius: 10px; padding: 12px; overflow: hidden;
@@ -149,6 +174,16 @@ input[type=range]:disabled { opacity: .4; }
 .compare {
   position: relative; display: inline-block; max-width: 100%; cursor: ew-resize;
   touch-action: none; user-select: none; line-height: 0;
+}
+.compare.brush-mode { cursor: crosshair; }
+.compare.brush-mode .divider { display: none; }
+.compare.brush-mode .tag-before { display: none; }
+.compare.brush-mode .tag-after { display: none; }
+
+.brush-cursor {
+  position: absolute; pointer-events: none; border-radius: 50%;
+  border: 1.5px solid #fff; box-shadow: 0 0 4px rgba(0,0,0,0.8), inset 0 0 2px rgba(0,0,0,0.8);
+  transform: translate(-50%, -50%); z-index: 5;
 }
 /* Canvas thật có kích thước gốc (vd 6000×4000); CSS chỉ thu nhỏ để hiển thị */
 .before-slot canvas {

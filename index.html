@@ -39,17 +39,22 @@
         <section class="settings">
           <h2>Mô hình AI</h2>
           <select id="modelSelect">
-            <option value="isnet">Chất lượng cao nhất (~170MB)</option>
-            <option value="isnet_fp16" selected>Cân bằng (~85MB)</option>
-            <option value="isnet_quint8">Nhanh, nhẹ (~40MB)</option>
+            <option value="rmbg-1.4" selected>⭐ RMBG-1.4 Studio (Khuyên dùng · SOTA, ~44MB)</option>
+            <option value="isnet_fp16">IS-Net Cân bằng (~85MB)</option>
+            <option value="isnet">IS-Net Cao nhất (~170MB)</option>
+            <option value="isnet_quint8">IS-Net Siêu nhẹ (~40MB)</option>
           </select>
-          <p class="hint">Mô hình chỉ tải 1 lần rồi được trình duyệt lưu cache.</p>
+          <p class="hint">RMBG-1.4 nhận diện cực chuẩn lá cây, sticker, tóc, mép vải, đồ vật phức tạp.</p>
 
-          <h2>Tinh chỉnh viền</h2>
+          <h2>Tinh chỉnh viền & Độ nhạy</h2>
           <label class="switch">
             <input id="refineToggle" type="checkbox" checked />
             <span>Bám viền theo ảnh gốc (Guided Filter)</span>
           </label>
+          <div class="slider">
+            <label for="threshRange">Độ nhạy tách nền <b id="threshVal">50%</b></label>
+            <input id="threshRange" type="range" min="10" max="90" value="50" />
+          </div>
           <div class="slider">
             <label for="radiusRange">Bán kính tinh chỉnh <b id="radiusVal">6</b></label>
             <input id="radiusRange" type="range" min="1" max="20" value="6" />
@@ -100,6 +105,22 @@
               <button id="downloadBtn" class="primary-btn" disabled>⬇ Tải ảnh</button>
             </div>
           </div>
+
+          <!-- Thanh công cụ Cọ Chỉnh Sửa Thủ Công -->
+          <div class="brush-bar" id="brushBar">
+            <div class="brush-modes">
+              <button id="modeCompareBtn" class="tool-chip active" title="Chế độ thanh kéo so sánh Trước / Sau">⇆ Kéo so sánh</button>
+              <button id="modeRestoreBtn" class="tool-chip" title="Lấy lại chi tiết gốc AI cắt thiếu (như lá, cọng, viền)">🖌️ Lấy lại chi tiết</button>
+              <button id="modeEraseBtn" class="tool-chip" title="Xóa bỏ chi tiết thừa / bóng đổ còn sót">🧹 Xóa phần thừa</button>
+            </div>
+            <div class="brush-params hidden" id="brushParams">
+              <label for="brushSizeRange">Cỡ cọ: <b id="brushSizeVal">30px</b></label>
+              <input id="brushSizeRange" type="range" min="5" max="120" value="30" />
+              <button id="undoBtn" class="ghost-btn-sm" disabled title="Hoàn tác nét cọ vừa vẽ">↩️ Hoàn tác</button>
+              <button id="resetBrushBtn" class="ghost-btn-sm" title="Khôi phục lại kết quả AI ban đầu">↺ Đặt lại AI</button>
+            </div>
+          </div>
+
           <div class="stage" id="stage">
             <div class="compare" id="compare">
               <div class="before-slot" id="beforeSlot"></div>
@@ -107,6 +128,7 @@
               <span class="tag tag-before">Trước</span>
               <span class="tag tag-after">Sau</span>
               <div class="divider" id="divider"><span>⇆</span></div>
+              <div id="brushCursor" class="brush-cursor hidden"></div>
             </div>
             <div class="overlay hidden" id="overlay">
               <div class="spinner"></div>
