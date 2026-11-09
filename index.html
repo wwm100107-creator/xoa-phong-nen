@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Xóa Phông Nền – Giữ nguyên độ phân giải</title>
+    <meta name="description" content="Công cụ xóa phông nền ảnh bằng AI chạy ngay trong trình duyệt, giữ nguyên độ phân giải gốc, hỗ trợ JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG..." />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✂️</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">✂</span>
+        <div>
+          <h1>Xóa Phông Nền</h1>
+          <p>AI chạy 100% trên trình duyệt · Giữ nguyên độ phân giải gốc</p>
+        </div>
+      </div>
+      <a class="ghost-btn" href="#cach-hoat-dong">Cách hoạt động</a>
+    </header>
+
+    <main class="layout">
+      <!-- ============ CỘT TRÁI: NHẬP ẢNH + CÀI ĐẶT ============ -->
+      <aside class="panel">
+        <label id="dropzone" class="dropzone" tabindex="0">
+          <input id="fileInput" type="file" multiple accept="image/*,.heic,.heif,.tif,.tiff,.avif,.svg,.bmp,.ico,.jxl" hidden />
+          <div class="dz-icon">⬆</div>
+          <strong>Kéo thả ảnh vào đây</strong>
+          <span>hoặc bấm để chọn · dán bằng Ctrl+V</span>
+          <small>JPG · PNG · WebP · HEIC · TIFF · AVIF · BMP · GIF · SVG · ICO</small>
+        </label>
+
+        <section class="settings">
+          <h2>Mô hình AI</h2>
+          <select id="modelSelect">
+            <option value="isnet">Chất lượng cao nhất (~170MB)</option>
+            <option value="isnet_fp16" selected>Cân bằng (~85MB)</option>
+            <option value="isnet_quint8">Nhanh, nhẹ (~40MB)</option>
+          </select>
+          <p class="hint">Mô hình chỉ tải 1 lần rồi được trình duyệt lưu cache.</p>
+
+          <h2>Tinh chỉnh viền</h2>
+          <label class="switch">
+            <input id="refineToggle" type="checkbox" checked />
+            <span>Bám viền theo ảnh gốc (Guided Filter)</span>
+          </label>
+          <div class="slider">
+            <label for="radiusRange">Bán kính tinh chỉnh <b id="radiusVal">6</b></label>
+            <input id="radiusRange" type="range" min="1" max="20" value="6" />
+          </div>
+          <div class="slider">
+            <label for="lowRange">Lọc nhiễu nền <b id="lowVal">4%</b></label>
+            <input id="lowRange" type="range" min="0" max="50" value="4" />
+          </div>
+          <div class="slider">
+            <label for="highRange">Độ đặc chủ thể <b id="highVal">96%</b></label>
+            <input id="highRange" type="range" min="50" max="100" value="96" />
+          </div>
+
+          <h2>Nền xuất ra</h2>
+          <div class="bg-options" id="bgOptions">
+            <button data-bg="transparent" class="bg-chip active checker" title="Trong suốt"></button>
+            <button data-bg="#ffffff" class="bg-chip" style="background:#fff" title="Trắng"></button>
+            <button data-bg="#000000" class="bg-chip" style="background:#000" title="Đen"></button>
+            <button data-bg="#2563eb" class="bg-chip" style="background:#2563eb" title="Xanh"></button>
+            <button data-bg="#ef4444" class="bg-chip" style="background:#ef4444" title="Đỏ"></button>
+            <label class="bg-chip custom" title="Màu tùy chọn">
+              <input id="bgColor" type="color" value="#22c55e" />
+            </label>
+          </div>
+
+          <h2>Định dạng tải về</h2>
+          <select id="formatSelect">
+            <option value="image/png" selected>PNG (không mất dữ liệu, có trong suốt)</option>
+            <option value="image/webp">WebP (nhẹ, có trong suốt)</option>
+            <option value="image/jpeg">JPG (không trong suốt – dùng màu nền)</option>
+          </select>
+        </section>
+      </aside>
+
+      <!-- ============ CỘT PHẢI: XEM TRƯỚC / SO SÁNH ============ -->
+      <section class="workspace">
+        <div id="emptyState" class="empty">
+          <div class="empty-art">🖼️</div>
+          <h3>Chưa có ảnh nào</h3>
+          <p>Thêm ảnh ở cột bên trái để bắt đầu. Ảnh <b>không bị tải lên server</b> – mọi xử lý diễn ra trên máy bạn.</p>
+        </div>
+
+        <div id="viewer" class="viewer hidden">
+          <div class="viewer-toolbar">
+            <div class="meta" id="metaInfo"></div>
+            <div class="actions">
+              <button id="rerunBtn" class="ghost-btn" disabled title="Chạy lại AI với mô hình đang chọn">↻ Chạy lại AI</button>
+              <button id="downloadBtn" class="primary-btn" disabled>⬇ Tải ảnh</button>
+            </div>
+          </div>
+          <div class="stage" id="stage">
+            <div class="compare" id="compare">
+              <div class="before-slot" id="beforeSlot"></div>
+              <div class="after-wrap checker" id="afterWrap"></div>
+              <span class="tag tag-before">Trước</span>
+              <span class="tag tag-after">Sau</span>
+              <div class="divider" id="divider"><span>⇆</span></div>
+            </div>
+            <div class="overlay hidden" id="overlay">
+              <div class="spinner"></div>
+              <p id="overlayText">Đang xử lý…</p>
+              <div class="progress"><div id="progressBar"></div></div>
+            </div>
+          </div>
+          <p class="stage-hint">Kéo thanh giữa để so sánh <b>Trước</b> / <b>Sau</b>.</p>
+        </div>
+
+        <div class="queue-head hidden" id="queueHead">
+          <h2>Danh sách ảnh</h2>
+          <div>
+            <button id="downloadAllBtn" class="ghost-btn" disabled>Tải tất cả</button>
+            <button id="clearBtn" class="ghost-btn">Xóa danh sách</button>
+          </div>
+        </div>
+        <ul id="queue" class="queue"></ul>
+      </section>
+    </main>
+
+    <!-- ============ GIẢI THÍCH LOGIC (TIẾNG VIỆT) ============ -->
+    <section id="cach-hoat-dong" class="explain">
+      <h2>Cách công cụ hoạt động</h2>
+      <ol class="steps">
+        <li><b>Giải mã ảnh ở độ phân giải gốc.</b> JPG/PNG/WebP/AVIF/GIF/BMP/ICO dùng bộ giải mã của trình duyệt (tự xoay theo EXIF). HEIC/HEIF dùng <code>heic2any</code>, TIFF dùng <code>UTIF</code>, SVG được vẽ thành ảnh raster. Kết quả là một bảng điểm ảnh RGBA đúng kích thước gốc.</li>
+        <li><b>Tạo bản thu nhỏ cho AI.</b> Mô hình IS-Net chỉ nhận đầu vào 1024×1024, nên ta thu nhỏ ảnh nhiều bước (mỗi bước ½) để tránh răng cưa, rồi đưa vào AI.</li>
+        <li><b>AI dự đoán mặt nạ (alpha mask).</b> Mô hình chạy bằng ONNX Runtime trên WebGPU (nếu có) hoặc WebAssembly, trả về mặt nạ 1024×1024: 255 = chủ thể, 0 = nền.</li>
+        <li><b>Phóng mặt nạ về độ phân giải gốc bằng Guided Filter.</b> Thay vì phóng to mặt nạ đơn thuần (gây viền mờ, bậc thang), ta dùng <i>Fast Guided Filter</i>: tính hệ số tuyến tính <code>q = a·I + b</code> ở độ phân giải thấp, rồi áp lên <b>từng điểm ảnh gốc</b>. Nhờ vậy viền mặt nạ bám theo chi tiết thật của ảnh gốc (tóc, lông, mép vải).</li>
+        <li><b>Làm sạch alpha.</b> Giá trị dưới ngưỡng “Lọc nhiễu nền” thành 0, trên ngưỡng “Độ đặc chủ thể” thành 255, ở giữa được nội suy mượt.</li>
+        <li><b>Ghép kênh alpha vào ảnh gốc.</b> Màu RGB của mọi điểm ảnh được giữ nguyên 100%, chỉ kênh trong suốt thay đổi ⇒ ảnh xuất ra có <b>đúng kích thước và độ nét như ảnh gốc</b>.</li>
+        <li><b>Xuất file.</b> PNG (không mất dữ liệu), WebP, hoặc JPG kèm màu nền bạn chọn.</li>
+      </ol>
+    </section>
+
+    <footer class="footer">
+      Xử lý hoàn toàn trên thiết bị · Mô hình: IS-Net qua <a href="https://github.com/imgly/background-removal-js" target="_blank" rel="noopener">@imgly/background-removal</a> (AGPL-3.0)
+    </footer>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
