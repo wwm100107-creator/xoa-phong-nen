@@ -193,6 +193,18 @@ input[type=range]:disabled { opacity: .4; }
 .brush-params { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); }
 .brush-params input[type=range] { width: 90px; }
 .brush-params b { color: var(--accent-2); }
+.peek-btn {
+  background: transparent; border: 1px dashed var(--line); color: var(--muted);
+  padding: 5px 9px; border-radius: 8px; font-size: 12px; white-space: nowrap; cursor: pointer;
+}
+.peek-btn:hover { border-color: var(--accent); color: var(--text); }
+.peek-btn kbd {
+  background: #232838; color: var(--accent-2); border-radius: 4px; padding: 1px 6px;
+  font: inherit; font-weight: 600;
+}
+.peek-btn small { color: var(--accent); margin-left: 4px; font-size: 11px; }
+.peek-btn.held { border-style: solid; border-color: var(--accent-2); color: var(--text); }
+.peek-btn.capturing { border-style: solid; border-color: var(--accent); color: var(--text); }
 .ghost-btn-sm {
   background: transparent; border: 1px solid var(--line); color: var(--text);
   padding: 5px 10px; border-radius: 6px; font-size: 12px;
@@ -222,7 +234,8 @@ input[type=range]:disabled { opacity: .4; }
   display: block; max-width: 100%; max-height: 68vh; width: auto; height: auto; border-radius: 6px;
 }
 .after-wrap { position: absolute; inset: 0; border-radius: 6px; }
-.after-wrap canvas { width: 100%; height: 100%; display: block; }
+.after-wrap canvas { width: 100%; height: 100%; display: block; position: relative; }
+.after-wrap canvas.peek-ghost { position: absolute; inset: 0; opacity: .38; pointer-events: none; }
 .divider {
   position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; transform: translateX(-1px);
   box-shadow: 0 0 10px rgba(0, 0, 0, .6); pointer-events: none;

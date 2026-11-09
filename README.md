@@ -24,6 +24,7 @@ Khi cần chỉnh tay, ví dụ băng dính hay vật gá nằm tách rời mà 
    - ⇆ **Kéo so sánh (Compare slider)**: Kéo trước / sau mượt mà.
    - 🪄 **Đũa thần 1 chạm (Magic Wand)**: Bấm 1 nhấp chuột vào bất kỳ vệt bóng, chữ viết tay hay mũi tên thừa để xóa sạch theo vùng màu tương đồng.
    - 🧹 **Cọ xóa (Erase brush)** & 🖌️ **Cọ lấy lại (Restore brush)**: Quét cọ thủ công trực tiếp lên độ phân giải gốc.
+   - 👁️ **Giữ phím để xem ảnh gốc**: khi dùng đũa thần hoặc cọ, giữ `Ctrl` để hiện mờ ảnh gốc ở lớp dưới. Có thể đổi sang phím khác hoặc nút chuột.
    - ↩️ **Hoàn tác (Undo)** & ↺ **Đặt lại AI ban đầu**.
 
 ---

@@ -11,6 +11,7 @@
 import './style.css';
 import { decodeImage, makeCanvas } from './decode.js';
 import { predictLayers, resizeHQ } from './segment.js';
+import { createPeek } from './peek.js';
 
 // Lưới tính toán đường viền. Lớn hơn thì viền chi tiết hơn nhưng tốn RAM trong worker.
 const GUIDE_MAX = (navigator.deviceMemory ?? 8) >= 4 ? 2048 : 1280;
@@ -33,6 +34,7 @@ const els = {
   brushSizeWrap: $('brushSizeWrap'), brushSize: $('brushSizeRange'), brushSizeVal: $('brushSizeVal'),
   wandTolWrap: $('wandTolWrap'), wandTol: $('wandTolRange'), wandTolVal: $('wandTolVal'),
   undoBtn: $('undoBtn'), resetBrushBtn: $('resetBrushBtn'), brushCursor: $('brushCursor'),
+  peekBtn: $('peekBtn'),
 };
 
 // ---------------------------------------------------------------- TRẠNG THÁI
@@ -281,6 +283,7 @@ function renderViewer() {
   }
 
   it.status === 'done' || it.status === 'error' ? hideOverlay() : null;
+  syncPeek();
 }
 
 function showOverlay(text, ratio) {
@@ -316,21 +319,58 @@ function setTool(tool) {
 
   els.brushSizeWrap.classList.toggle('hidden', tool === 'compare' || tool === 'wand');
   els.wandTolWrap.classList.toggle('hidden', tool !== 'wand');
+  els.peekBtn.classList.toggle('hidden', tool === 'compare');
 
   if (tool === 'compare') {
     els.brushCursor.classList.add('hidden');
-    els.stageHint.innerHTML = 'Kéo thanh giữa để so sánh <b>Trước</b> / <b>Sau</b>.';
     setSplit(50);
   } else if (tool === 'wand') {
     els.brushCursor.classList.add('hidden');
     els.afterWrap.style.clipPath = 'none';
-    els.stageHint.innerHTML = '🪄 Bấm <b>1 nhấp</b> vào vùng bóng đổ, chữ hoặc chi tiết thừa để xóa thông minh tức thì.';
   } else {
     els.afterWrap.style.clipPath = 'none';
-    els.stageHint.innerHTML = 'Quét cọ trên ảnh để chỉnh sửa trực tiếp trên độ phân giải gốc.';
     updateBrushCursorSize();
   }
+  renderStageHint();
+  syncPeek();
 }
+
+function renderStageHint() {
+  const peekHint = ` Giữ <b>${peek.label}</b> để hiện mờ ảnh gốc bên dưới.`;
+  els.stageHint.innerHTML = {
+    compare: 'Kéo thanh giữa để so sánh <b>Trước</b> / <b>Sau</b>.',
+    wand: `🪄 Bấm <b>1 nhấp</b> vào vùng bóng đổ, chữ hoặc chi tiết thừa để xóa thông minh tức thì.${peekHint}`,
+  }[currentTool] ?? `Quét cọ trên ảnh để chỉnh sửa trực tiếp trên độ phân giải gốc.${peekHint}`;
+}
+
+// ---------------------------------------------------------------- XEM ẢNH GỐC KHI ĐANG CHỈNH
+let shownGhost = null;
+
+/** Ảnh gốc đặt dưới lớp kết quả nên chỉ lộ ra ở phần đã xóa, không che vùng đang giữ lại. */
+function syncPeek() {
+  const it = selected;
+  const show = peek.held && currentTool !== 'compare' && it?.orig && it.result;
+  if (!show) {
+    shownGhost?.remove();
+    shownGhost = null;
+    return;
+  }
+  if (!it.ghost) {
+    it.ghost = resizeHQ(it.orig, ...fit(it.W, it.H, GUIDE_MAX));
+    it.ghost.className = 'peek-ghost';
+  }
+  if (shownGhost !== it.ghost) shownGhost?.remove();
+  shownGhost = it.ghost;
+  els.afterWrap.prepend(shownGhost);
+}
+
+const peek = createPeek({
+  button: els.peekBtn,
+  stage: els.compare,
+  isAvailable: () => currentTool !== 'compare' && !!selected?.result,
+  onHoldChange: syncPeek,
+  onBindingChange: renderStageHint,
+});
 
 function updateBrushCursorSize() {
   const size = +els.brushSize.value;
@@ -453,6 +493,7 @@ function paint(e) {
 }
 
 els.compare.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return; // chuột phải, chuột giữa có thể đang được gán để xem ảnh gốc
   if (currentTool === 'compare') {
     dragging = true;
     els.compare.setPointerCapture(e.pointerId);
