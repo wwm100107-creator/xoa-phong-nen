@@ -1,19 +1,16 @@
 /**
- * segment.js – CHẠY AI ĐỂ LẤY MẶT NẠ CHỦ THỂ (ALPHA MASK)
+ * segment.js – HỆ THỐNG ĐIỀU PHỐI MÔ HÌNH PHÂN ĐOẠN ẢNH (UYUT AI)
  * ----------------------------------------------------------------------------
- * Hỗ trợ 2 kiến trúc mô hình:
- *   1. BRIA RMBG-1.4 (Khuyên dùng): Mô hình SOTA hàng đầu thế giới về tách nền,
- *      giữ trọn vẹn lá cây, sticker, tóc tơ, nhiều vật thể cùng lúc.
- *   2. IS-Net (@imgly): Mô hình phân đoạn đối tượng đơn lẻ.
+ * Hỗ trợ các mô hình hàng đầu thế giới:
+ *   1. ⭐ BRIA RMBG-1.4 Studio (~44MB): Nhanh, chuẩn, tiết kiệm RAM.
+ *   2. ✨ BiRefNet Lite (~114MB): Giải thưởng ECCV 2024, viền cực chuẩn, chi tiết siêu mịn.
+ *   3. IS-Net (@imgly): Mô hình phân đoạn đơn lẻ truyền thống.
  */
 import { segmentForeground } from '@imgly/background-removal';
-import { predictRMBG } from './rmbg.js';
+import { predictWithModel } from './rmbg.js';
 
 export const AI_SIZE = 1024;
 
-/**
- * Thu nhỏ chất lượng cao: giảm một nửa liên tục cho tới gần kích thước đích.
- */
 export function resizeHQ(src, w, h) {
   let cur = src, cw = src.width, ch = src.height;
   while (cw / 2 >= w && ch / 2 >= h) {
@@ -42,25 +39,21 @@ async function hasWebGPU() {
 }
 
 /**
- * Chạy AI trên ảnh gốc (canvas), trả về mặt nạ Uint8Array dài 1024*1024.
- * @param {HTMLCanvasElement} srcCanvas ảnh gốc
- * @param {string} model 'rmbg-1.4' | 'isnet' | 'isnet_fp16' | 'isnet_quint8'
- * @param {(label:string, ratio:number)=>void} onProgress
+ * Chạy AI dự đoán mặt nạ từ ảnh canvas gốc.
  */
 export async function predictMask(srcCanvas, model, onProgress) {
-  // Ưu tiên mô hình BRIA RMBG-1.4
-  if (model === 'rmbg-1.4') {
-    // Thu nhỏ HQ về kích thước hợp lý (tối đa 1024) trước khi đưa vào RMBG
+  // 1) Các mô hình SOTA (RMBG-1.4 và BiRefNet)
+  if (model === 'rmbg-1.4' || model === 'birefnet') {
     const maxSide = Math.max(srcCanvas.width, srcCanvas.height);
     let inputCanvas = srcCanvas;
     if (maxSide > AI_SIZE) {
       const k = AI_SIZE / maxSide;
       inputCanvas = resizeHQ(srcCanvas, Math.round(srcCanvas.width * k), Math.round(srcCanvas.height * k));
     }
-    return await predictRMBG(inputCanvas, onProgress);
+    return await predictWithModel(inputCanvas, model, onProgress);
   }
 
-  // Phương án IS-Net (@imgly)
+  // 2) Mô hình IS-Net (@imgly)
   const small = resizeHQ(srcCanvas, AI_SIZE, AI_SIZE);
   const blob = await new Promise((r) => small.toBlob(r, 'image/png'));
 

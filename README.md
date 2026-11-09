@@ -1,125 +1,82 @@
-# ✂️ UyCut AI – Xóa Phông Nền Giữ Nguyên Độ Phân Giải
+# ✂️ UyCut AI 3.0 – Tách Nền Chuẩn Độ Phân Giải Gốc
 
-Công cụ web xóa phông nền ảnh bằng AI phát triển bởi **Uy**, **chạy 100% trên trình duyệt** (ảnh không bị tải lên server), hỗ trợ hầu hết định dạng ảnh và **xuất ra đúng kích thước, độ nét của ảnh gốc**.
+Công cụ web tách phông nền ảnh bằng AI hiện đại nhất được thiết kế & phát triển bởi **Uy**, **chạy 100% trên trình duyệt** (Client-side, ảnh không bao giờ gửi lên server), hỗ trợ mọi định dạng ảnh và **bảo toàn 100% độ phân giải gốc của ảnh**.
 
-## Tính năng
+- **Website trực tiếp**: [https://xoa-phong-nen.vercel.app](https://xoa-phong-nen.vercel.app)
+- **Mã nguồn GitHub**: [https://github.com/wwm100107-creator/xoa-phong-nen](https://github.com/wwm100107-creator/xoa-phong-nen)
 
-- **Mô hình SOTA BRIA RMBG-1.4**: Nhận diện siêu chuẩn xác mọi chi tiết phức tạp (lá cây, cuống quả, viền sticker, tóc tơ, nhiều chủ thể).
-- **Bộ công cụ Cọ thủ công (Interactive Touch-up)**:
-  - 🖌️ **Lấy lại chi tiết (Restore brush)**: Tô vào đâu khôi phục lại phần ảnh gốc bị cắt thiếu ngay lập tức.
-  - 🧹 **Xóa phần thừa (Erase brush)**: Quẹt để xóa sạch bóng đổ, chữ hoặc chi tiết nền còn sót.
-  - ↩️ **Hoàn tác (Undo)** nét cọ và ↺ **Đặt lại AI**.
-- **Giữ nguyên độ phân giải**: Ảnh 6000×4000 vào → ảnh 6000×4000 ra.
-- **Guided Filter kết hợp Uncertainty Band**: Chống lem chữ hoặc viền nền vào chủ thể.
-- **Thanh trượt Độ nhạy tách nền & Tinh chỉnh viền** theo thời gian thực.
-- Hỗ trợ: **JPG, PNG, WebP, AVIF, GIF, BMP, ICO, SVG, HEIC/HEIF (iPhone), TIFF**.
-- Nền xuất ra: trong suốt, màu tùy chọn, hoặc xuất PNG (Lossless), WebP, JPG.
-- Tự động tận dụng **WebGPU** (GPU tăng tốc phần cứng), tự lùi về WebAssembly.
+---
 
-## Chạy trên máy
+## Tính năng đột phá trong phiên bản 3.0
 
-```bash
-npm install
-npm run dev      # chạy thử tại http://localhost:5173
-npm run build    # build ra thư mục dist/
-```
+1. **Chuẩn hóa khung hình Letterbox 1:1 Aspect-Ratio**:
+   - Tránh việc bóp méo hình chữ nhật thành hình vuông 1024×1024 khi nạp vào AI.
+   - Nhờ đệm viền trung tính (Padding), AI nhận dạng chính xác từng cuống lá, độ cong quả cam, viền sticker mà không bị biến dạng hình học.
+2. **Dual SOTA AI: RMBG-1.4 Studio & BiRefNet Lite**:
+   - **BRIA RMBG-1.4 Studio** (~44MB): Siêu nhanh, nhận dạng cực nhạy, tiết kiệm RAM.
+   - **BiRefNet Lite** (~114MB - ECCV 2024 DIS Winner): Kiến trúc Bilateral Reference Network cho đường viền mượt mà, siêu sắc nét.
+3. **Cơ chế Solid Subject Protection (Bảo vệ chi tiết tối)**:
+   - Các chi tiết tối màu (như lá cây xanh đậm, tóc tơ, đồng tử, vân nhám) có xác suất AI $\ge 0.70$ được **bảo vệ 100% độ đặc**, không bao giờ bị bộ lọc độ sáng biến thành trong suốt hay rỗng ruột.
+4. **Thuật toán Smart Deshadow (Tự động triệt tiêu bóng đổ)**:
+   - Tự động phát hiện và loại bỏ các vệt bóng xám/nâu bẩn đổ dưới đáy quả hoặc sticker trên mặt bàn/giấy.
+5. **Thu gọn viền / Bóc viền thừa (Edge Trim / Shrink)**:
+   - Cho phép co viền từ 0 - 6px chỉ trong 10ms, giúp bóc sạch viền giấy trắng của sticker hoặc viền lem màu nền cũ.
+6. **Bộ công cụ Studio tương tác thời gian thực (60 FPS)**:
+   - ⇆ **Kéo so sánh (Compare slider)**: Kéo trước / sau mượt mà.
+   - 🪄 **Đũa thần 1 chạm (Magic Wand)**: Bấm 1 nhấp chuột vào bất kỳ vệt bóng, chữ viết tay hay mũi tên thừa để xóa sạch theo vùng màu tương đồng.
+   - 🧹 **Cọ xóa (Erase brush)** & 🖌️ **Cọ lấy lại (Restore brush)**: Quét cọ thủ công trực tiếp lên độ phân giải gốc.
+   - ↩️ **Hoàn tác (Undo)** & ↺ **Đặt lại AI ban đầu**.
 
-## Cấu trúc mã nguồn
+---
 
-| File | Vai trò |
-|---|---|
-| `index.html` | Giao diện: vùng thả ảnh, cài đặt, khung so sánh, danh sách ảnh |
-| `src/main.js` | Điều phối: hàng đợi, gọi giải mã → AI → tinh chỉnh → xuất file |
-| `src/decode.js` | Giải mã **mọi định dạng** ảnh về canvas đúng kích thước gốc |
-| `src/segment.js` | Chạy mô hình AI IS-Net để lấy mặt nạ chủ thể 1024×1024 |
-| `src/refine.worker.js` | **Fast Guided Filter**: phóng mặt nạ về độ phân giải gốc, ghép kênh alpha |
-| `src/style.css` | Giao diện |
-
-## Logic thực hiện (chi tiết)
+## Kiến trúc & Luồng xử lý kỹ thuật
 
 ```mermaid
-flowchart LR
-  A["File ảnh bất kỳ"] --> B["decode.js: canvas gốc W×H"]
-  B --> C["Thu nhỏ nhiều bước về 1024×1024"]
-  C --> D["AI IS-Net: mặt nạ 1024×1024"]
-  B --> E["Ảnh dẫn đường ≤1536px"]
-  D --> F["Guided Filter: hệ số a, b"]
-  E --> F
-  F --> G["Áp q = a·I + b trên từng điểm ảnh gốc W×H"]
-  B --> G
-  G --> H["Ảnh W×H có kênh trong suốt"]
-  H --> I["Xuất PNG / WebP / JPG"]
+flowchart TD
+    A["File ảnh gốc bất kỳ (JPG, PNG, HEIC, TIFF, WebP, SVG...)"] --> B["decode.js: Giải mã giữ nguyên kích thước W x H"]
+    B --> C["rmbg.js: Letterbox Padding về 1024x1024 tỷ lệ 1:1"]
+    C --> D["Mô hình SOTA AI (RMBG-1.4 hoặc BiRefNet Lite trên WebGPU/WASM)"]
+    D --> E["Unpad Mask: Trích xuất mặt nạ đúng tỷ lệ gốc"]
+    B --> F["refine.worker.js: Fast Guided Filter + Solid Protection + Deshadow + Trim"]
+    E --> F
+    F --> G["Canvas kết quả W x H (Kênh Alpha chuẩn xác)"]
+    G --> H["Bộ công cụ Studio: Magic Wand 1 chạm & Cọ quét 60fps"]
+    H --> I["Xuất file PNG (Lossless) / WebP / JPG chuẩn độ phân giải gốc"]
 ```
 
-### Bước 1 – Giải mã ảnh ở độ phân giải gốc (`decode.js`)
+### 1. Giải mã đa định dạng (`decode.js`)
+Đọc 32 byte đầu file (Magic Bytes) để nhận diện định dạng chuẩn:
+- **HEIC / HEIF (iPhone)**: Giải mã bằng `heic2any` qua Web Worker.
+- **TIFF / TIF**: Giải mã bằng `utif2` hỗ trợ đa trang, RGB/CMYK.
+- **SVG**: Kết xuất vector lên canvas đúng `naturalWidth`/`naturalHeight`.
+- **PNG / WebP / JPG / AVIF / BMP / ICO**: Tự động giải mã qua `createImageBitmap` tăng tốc phần cứng.
 
-1. Đọc 32 byte đầu file (“magic bytes”) để biết định dạng thật, vì trên Windows file HEIC/TIFF thường không có MIME type.
-   - `II*\0` / `MM\0*` → TIFF
-   - `....ftyp` + `heic/mif1…` → HEIC; `avif` → AVIF
-   - `<svg` / `<?xml` → SVG
-2. Mỗi định dạng có cách giải mã riêng:
-   - **JPG/PNG/WebP/AVIF/GIF/BMP/ICO**: `createImageBitmap(file, { imageOrientation: 'from-image' })` – dùng bộ giải mã gốc của trình duyệt và **tự xoay theo EXIF** (ảnh chụp điện thoại không bị nằm ngang).
-   - **HEIC**: thử giải mã gốc (Safari làm được); nếu thất bại dùng `heic2any` chuyển sang PNG (giữ nguyên kích thước).
-   - **TIFF**: dùng `UTIF` giải mã ra RGBA; nếu file có nhiều trang thì chọn trang lớn nhất (tránh lấy nhầm thumbnail).
-   - **SVG**: là ảnh vector nên được render ở cạnh dài tối thiểu 2048px.
-3. Kết quả: một `<canvas>` kích thước **W×H đúng bằng ảnh gốc**.
+### 2. Tiền xử lý Letterbox & Suy luận AI (`rmbg.js` & `segment.js`)
+- Tự động tính toán tỷ lệ co giãn $s = 1024 / \max(W, H)$ và tọa độ bù trừ $(dx, dy)$ để đặt ảnh vào giữa khung 1024×1024.
+- Mặt nạ xuất ra từ mô hình được gỡ đệm (Unpad) bằng phép biến đổi affine ngược, đảm bảo độ chính xác tọa độ pixel tuyệt đối.
 
-### Bước 2 – Chuẩn bị đầu vào cho AI (`segment.js`)
+### 3. Tinh chỉnh viền & Bảo vệ chủ thể (`refine.worker.js`)
+- **Fast Guided Filter** chạy với độ phức tạp $O(N)$ bằng Box Filter 2 lượt (ngang & dọc).
+- Tách biệt dải bất định: Chỉ can thiệp vào viền biên mềm ($0.12 < \alpha < 0.70$). Vùng chủ thể chắc chắn giữ nguyên $1.0$.
 
-Mô hình IS-Net chỉ nhận ảnh **1024×1024**. Nếu thu nhỏ một bước từ 6000px xuống 1024px sẽ bị răng cưa (aliasing), làm AI nhận diện kém. Vì vậy hàm `resizeHQ()` **giảm ½ liên tục** (6000 → 3000 → 1500 → 1024), mỗi bước bật `imageSmoothingQuality = 'high'`.
+---
 
-### Bước 3 – AI dự đoán mặt nạ (`segment.js`)
+## Hướng dẫn cài đặt & Chạy trên máy
 
-- Thư viện `@imgly/background-removal` chạy mô hình ONNX bằng ONNX Runtime Web.
-- Ưu tiên `device: 'gpu'` (WebGPU), lỗi thì tự quay về `cpu` (WebAssembly).
-- Có 3 mức mô hình: `isnet` (chính xác nhất), `isnet_fp16` (cân bằng), `isnet_quint8` (nhẹ nhất). Mô hình tải từ CDN **một lần**, sau đó trình duyệt cache lại.
-- Đầu ra yêu cầu dạng thô `image/x-rgba8` (không nén lại PNG), mặt nạ nằm ở kênh alpha: **255 = chủ thể, 0 = nền**.
+```bash
+# Cài đặt thư viện
+npm install
 
-### Bước 4 – Giữ độ phân giải: Fast Guided Filter (`refine.worker.js`)
+# Khởi chạy server phát triển
+npm run dev
 
-Đây là phần quan trọng nhất. Mặt nạ chỉ có 1024×1024; nếu phóng to thẳng lên 6000×4000 thì viền sẽ **mờ và bậc thang**, tóc bị mất.
+# Đóng gói sản phẩm
+npm run build
 
-**Ý tưởng Guided Filter** (Kaiming He): trong một vùng nhỏ, alpha là hàm tuyến tính của độ sáng ảnh:
-
+# Xem thử bản build
+npm run preview
 ```
-q(x) = a · I(x) + b
-```
 
-- `I` = độ sáng của ảnh gốc, `p` = mặt nạ thô của AI.
-- Trong mỗi cửa sổ bán kính `r`, tìm `a, b` khớp nhất với `p`:
-  - `a = cov(I, p) / (var(I) + eps)`
-  - `b = mean(p) − a · mean(I)`
-- Vùng đặc (toàn chủ thể hoặc toàn nền): `cov = 0` ⇒ `a = 0`, `b = p` ⇒ giữ nguyên.
-- Vùng viền: `a ≠ 0` ⇒ alpha **đi theo biên sáng/tối thật** của ảnh gốc.
-
-**Phiên bản “Fast”** để chạy được ảnh hàng chục megapixel:
-1. Tính `a, b` ở lưới thấp (cạnh dài ≤ 1536px) – tốn ít RAM.
-2. Các phép trung bình dùng **box filter tổng trượt O(N)** – tốc độ không phụ thuộc bán kính.
-3. Với **từng điểm ảnh gốc** (x, y): nội suy song tuyến `a, b` rồi tính `alpha = a · I_gốc(x,y) + b`. Vì `I_gốc` lấy ở độ phân giải đầy đủ nên viền sắc nét đúng như ảnh gốc.
-
-Toàn bộ bước này chạy trong **Web Worker** để giao diện không bị đơ, và mảng điểm ảnh được *chuyển quyền sở hữu* (transferable) sang worker thay vì sao chép.
-
-### Bước 5 – Làm sạch alpha
-
-- `alpha < Lọc nhiễu nền` → 0 (xóa vệt nền mờ còn sót)
-- `alpha > Độ đặc chủ thể` → 1 (chủ thể không bị lỗ chỗ trong suốt)
-- Ở giữa: nội suy tuyến tính để viền mượt
-- Nếu ảnh gốc đã có trong suốt (PNG) thì nhân thêm với alpha gốc.
-
-Mặt nạ AI được lưu lại ⇒ khi kéo thanh trượt chỉ chạy lại bước 4–5 (vài trăm ms), **không chạy lại AI**.
-
-### Bước 6 – Ghép và xuất file
-
-- Chỉ ghi **kênh alpha**; R, G, B của mọi điểm ảnh giữ nguyên ⇒ chất lượng màu như ảnh gốc.
-- PNG/WebP + nền trong suốt: mã hóa thẳng canvas kết quả.
-- Có màu nền hoặc JPG: tạo canvas W×H, tô màu nền rồi vẽ kết quả lên trên.
-- Tên file: `ten-anh-xoa-nen.png`.
-
-## Giới hạn
-
-- Kích thước tối đa phụ thuộc giới hạn canvas của trình duyệt (Chrome/Edge/Firefox: ~ 268 triệu điểm ảnh; Safari iOS: ~16,7 triệu điểm ảnh).
-- Lần đầu cần tải mô hình (40–170MB tùy mức chất lượng).
-
-## Giấy phép
-
-Mã nguồn phát hành theo **AGPL-3.0** do sử dụng thư viện [`@imgly/background-removal`](https://github.com/imgly/background-removal-js) (AGPL-3.0).
+## Tác giả & Bản quyền
+- Thiết kế & phát triển: **Uy**
+- Bản quyền: MIT License

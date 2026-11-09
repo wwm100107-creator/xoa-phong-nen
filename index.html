@@ -3,30 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>UyCut AI – Xóa Phông Nền Giữ Nguyên Độ Phân Giải</title>
-    <meta name="description" content="UyCut AI - Công cụ xóa phông nền ảnh bằng AI chạy ngay trong trình duyệt của Uy, giữ nguyên độ phân giải gốc, hỗ trợ JPG, PNG, WebP, HEIC, TIFF, AVIF, BMP, GIF, SVG..." />
-    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <title>UyCut AI – Tách nền chuẩn độ phân giải gốc</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/src/style.css" />
+    <meta name="description" content="Công cụ tách phông nền AI miễn phí, chạy 100% trên trình duyệt (Client-side), giữ nguyên độ phân giải gốc của ảnh, hỗ trợ mọi định dạng JPG, PNG, HEIC, TIFF, AVIF, WebP, SVG." />
   </head>
   <body>
-    <header class="topbar">
+    <!-- ============ HEADER ============ -->
+    <header class="app-header">
       <div class="brand">
-        <img src="/logo.svg" alt="UyCut AI Logo" class="brand-logo" width="40" height="40" />
-        <div>
-          <div class="brand-title-wrap">
-            <h1>UyCut</h1>
-            <span class="brand-badge">AI</span>
-          </div>
-          <p>Tách nền chuẩn độ phân giải gốc · Made by Uy</p>
+        <img src="/logo.svg" alt="UyCut AI Logo" class="brand-logo" />
+        <div class="brand-text">
+          <span class="brand-name">UyCut <span class="badge">AI 3.0</span></span>
+          <span class="brand-tagline">Tách nền chuẩn độ phân giải gốc · Made by Uy</span>
         </div>
       </div>
-      <a class="ghost-btn" href="#cach-hoat-dong">Cách hoạt động</a>
+      <nav class="header-nav">
+        <a href="#cach-hoat-dong" class="nav-link">Cách hoạt động</a>
+      </nav>
     </header>
 
-    <main class="layout">
-      <!-- ============ CỘT TRÁI: NHẬP ẢNH + CÀI ĐẶT ============ -->
+    <!-- ============ NỘI DUNG CHÍNH ============ -->
+    <main class="app-main">
+      <!-- ============ CỘT TRÁI: ĐIỀU KHIỂN & CÀI ĐẶT ============ -->
       <aside class="panel">
         <label id="dropzone" class="dropzone" tabindex="0">
           <input id="fileInput" type="file" multiple accept="image/*,.heic,.heif,.tif,.tiff,.avif,.svg,.bmp,.ico,.jxl" hidden />
@@ -39,21 +38,30 @@
         <section class="settings">
           <h2>Mô hình AI</h2>
           <select id="modelSelect">
-            <option value="rmbg-1.4" selected>⭐ RMBG-1.4 Studio (Khuyên dùng · SOTA, ~44MB)</option>
+            <option value="rmbg-1.4" selected>⭐ RMBG-1.4 Studio (Khuyên dùng · Cực nhanh ~44MB)</option>
+            <option value="birefnet">✨ BiRefNet Lite (Đoạt giải ECCV 2024 · Viền siêu nét ~114MB)</option>
             <option value="isnet_fp16">IS-Net Cân bằng (~85MB)</option>
             <option value="isnet">IS-Net Cao nhất (~170MB)</option>
             <option value="isnet_quint8">IS-Net Siêu nhẹ (~40MB)</option>
           </select>
-          <p class="hint">RMBG-1.4 nhận diện cực chuẩn lá cây, sticker, tóc, mép vải, đồ vật phức tạp.</p>
+          <p class="hint">Đệm khung 1:1 chống méo ảnh. Tách chuẩn từng cuống lá, viền sticker, tóc tơ.</p>
 
-          <h2>Tinh chỉnh viền & Độ nhạy</h2>
+          <h2>Tinh chỉnh viền & Khử rác</h2>
           <label class="switch">
             <input id="refineToggle" type="checkbox" checked />
             <span>Bám viền theo ảnh gốc (Guided Filter)</span>
           </label>
+          <label class="switch">
+            <input id="deshadowToggle" type="checkbox" checked />
+            <span>Tự động xóa bóng đổ (Deshadow)</span>
+          </label>
           <div class="slider">
             <label for="threshRange">Độ nhạy tách nền <b id="threshVal">50%</b></label>
             <input id="threshRange" type="range" min="10" max="90" value="50" />
+          </div>
+          <div class="slider">
+            <label for="trimRange">Thu gọn viền / Bóc viền thừa <b id="trimVal">0px</b></label>
+            <input id="trimRange" type="range" min="0" max="6" value="0" />
           </div>
           <div class="slider">
             <label for="radiusRange">Bán kính tinh chỉnh <b id="radiusVal">6</b></label>
@@ -106,17 +114,24 @@
             </div>
           </div>
 
-          <!-- Thanh công cụ Cọ Chỉnh Sửa Thủ Công -->
+          <!-- Thanh công cụ Studio Chỉnh Sửa Thủ Công -->
           <div class="brush-bar" id="brushBar">
             <div class="brush-modes">
               <button id="modeCompareBtn" class="tool-chip active" title="Chế độ thanh kéo so sánh Trước / Sau">⇆ Kéo so sánh</button>
-              <button id="modeRestoreBtn" class="tool-chip" title="Lấy lại chi tiết gốc AI cắt thiếu (như lá, cọng, viền)">🖌️ Lấy lại chi tiết</button>
-              <button id="modeEraseBtn" class="tool-chip" title="Xóa bỏ chi tiết thừa / bóng đổ còn sót">🧹 Xóa phần thừa</button>
+              <button id="modeWandBtn" class="tool-chip" title="Bấm 1 nhấp để xóa bóng đổ, chữ hoặc vùng thừa bất kỳ">🪄 Đũa thần 1 chạm</button>
+              <button id="modeEraseBtn" class="tool-chip" title="Quét cọ để xóa thủ công chi tiết thừa">🧹 Cọ xóa</button>
+              <button id="modeRestoreBtn" class="tool-chip" title="Quét cọ để lấy lại chi tiết gốc">🖌️ Cọ lấy lại</button>
             </div>
-            <div class="brush-params hidden" id="brushParams">
-              <label for="brushSizeRange">Cỡ cọ: <b id="brushSizeVal">30px</b></label>
-              <input id="brushSizeRange" type="range" min="5" max="120" value="30" />
-              <button id="undoBtn" class="ghost-btn-sm" disabled title="Hoàn tác nét cọ vừa vẽ">↩️ Hoàn tác</button>
+            <div class="brush-params" id="brushParams">
+              <span id="brushSizeWrap">
+                <label for="brushSizeRange">Cỡ cọ: <b id="brushSizeVal">30px</b></label>
+                <input id="brushSizeRange" type="range" min="5" max="120" value="30" />
+              </span>
+              <span id="wandTolWrap" class="hidden">
+                <label for="wandTolRange">Độ nhạy đũa: <b id="wandTolVal">35</b></label>
+                <input id="wandTolRange" type="range" min="10" max="90" value="35" />
+              </span>
+              <button id="undoBtn" class="ghost-btn-sm" disabled title="Hoàn tác thao tác vừa vẽ">↩️ Hoàn tác</button>
               <button id="resetBrushBtn" class="ghost-btn-sm" title="Khôi phục lại kết quả AI ban đầu">↺ Đặt lại AI</button>
             </div>
           </div>
@@ -136,36 +151,83 @@
               <div class="progress"><div id="progressBar"></div></div>
             </div>
           </div>
-          <p class="stage-hint">Kéo thanh giữa để so sánh <b>Trước</b> / <b>Sau</b>.</p>
+          <p class="stage-hint" id="stageHint">Kéo thanh giữa để so sánh <b>Trước</b> / <b>Sau</b>.</p>
         </div>
 
         <div class="queue-head hidden" id="queueHead">
           <h2>Danh sách ảnh</h2>
           <div>
             <button id="downloadAllBtn" class="ghost-btn" disabled>Tải tất cả</button>
-            <button id="clearBtn" class="ghost-btn">Xóa danh sách</button>
+            <button id="clearAllBtn" class="ghost-btn">Xóa danh sách</button>
           </div>
         </div>
-        <ul id="queue" class="queue"></ul>
+        <div id="queue" class="queue"></div>
       </section>
     </main>
 
-    <!-- ============ GIẢI THÍCH LOGIC (TIẾNG VIỆT) ============ -->
-    <section id="cach-hoat-dong" class="explain">
-      <h2>Cách công cụ hoạt động</h2>
-      <ol class="steps">
-        <li><b>Giải mã ảnh ở độ phân giải gốc.</b> JPG/PNG/WebP/AVIF/GIF/BMP/ICO dùng bộ giải mã của trình duyệt (tự xoay theo EXIF). HEIC/HEIF dùng <code>heic2any</code>, TIFF dùng <code>UTIF</code>, SVG được vẽ thành ảnh raster. Kết quả là một bảng điểm ảnh RGBA đúng kích thước gốc.</li>
-        <li><b>Tạo bản thu nhỏ cho AI.</b> Mô hình IS-Net chỉ nhận đầu vào 1024×1024, nên ta thu nhỏ ảnh nhiều bước (mỗi bước ½) để tránh răng cưa, rồi đưa vào AI.</li>
-        <li><b>AI dự đoán mặt nạ (alpha mask).</b> Mô hình chạy bằng ONNX Runtime trên WebGPU (nếu có) hoặc WebAssembly, trả về mặt nạ 1024×1024: 255 = chủ thể, 0 = nền.</li>
-        <li><b>Phóng mặt nạ về độ phân giải gốc bằng Guided Filter.</b> Thay vì phóng to mặt nạ đơn thuần (gây viền mờ, bậc thang), ta dùng <i>Fast Guided Filter</i>: tính hệ số tuyến tính <code>q = a·I + b</code> ở độ phân giải thấp, rồi áp lên <b>từng điểm ảnh gốc</b>. Nhờ vậy viền mặt nạ bám theo chi tiết thật của ảnh gốc (tóc, lông, mép vải).</li>
-        <li><b>Làm sạch alpha.</b> Giá trị dưới ngưỡng “Lọc nhiễu nền” thành 0, trên ngưỡng “Độ đặc chủ thể” thành 255, ở giữa được nội suy mượt.</li>
-        <li><b>Ghép kênh alpha vào ảnh gốc.</b> Màu RGB của mọi điểm ảnh được giữ nguyên 100%, chỉ kênh trong suốt thay đổi ⇒ ảnh xuất ra có <b>đúng kích thước và độ nét như ảnh gốc</b>.</li>
-        <li><b>Xuất file.</b> PNG (không mất dữ liệu), WebP, hoặc JPG kèm màu nền bạn chọn.</li>
-      </ol>
+    <!-- ============ SECTION: GIẢI THÍCH LOGIC BẰNG TIẾNG VIỆT ============ -->
+    <section id="cach-hoat-dong" class="explanation">
+      <div class="exp-inner">
+        <h2>Kiến trúc & Logic Tách Nền Studio UyCut AI 3.0</h2>
+        <p class="lead">
+          Để giải quyết triệt để bài toán tách nền khó (như hình dán sticker, bóng đổ phức tạp, lá cây mỏng, chữ viết tay nền tạp), 
+          <b>UyCut AI 3.0</b> được nâng cấp toàn diện với 5 tầng công nghệ:
+        </p>
+        <div class="exp-grid">
+          <div class="exp-card">
+            <span class="step-num">1</span>
+            <h3>Letterbox Aspect-Ratio Preprocessing</h3>
+            <p>
+              Ảnh bất kể tỷ lệ ngang/dọc được đệm viền trung tính (Letterbox) về khung chuẩn 1024x1024 
+              trước khi nạp vào AI. Nhờ đó, vật thể <b>không bao giờ bị bóp méo hình học</b>, giúp AI nhận biết hoàn hảo từng cuống lá, mép quả tròn.
+            </p>
+          </div>
+          <div class="exp-card">
+            <span class="step-num">2</span>
+            <h3>Dual SOTA AI: RMBG-1.4 & BiRefNet Lite</h3>
+            <p>
+              Tích hợp 2 mô hình phân đoạn đối tượng mạnh nhất thế giới (BRIA RMBG-1.4 và BiRefNet Lite đoạt giải ECCV 2024), 
+              chạy trực tiếp trong trình duyệt bằng WebGPU/WASM qua <code>Transformers.js</code>.
+            </p>
+          </div>
+          <div class="exp-card">
+            <span class="step-num">3</span>
+            <h3>Bảo vệ chi tiết tối & Lọc bóng đổ (Deshadow)</h3>
+            <p>
+              Cơ chế <b>Solid Subject Protection</b> bảo vệ 100% các chi tiết tối màu (lá cây xanh đậm, tóc, mắt), 
+              ngăn không cho bộ lọc độ sáng làm thủng ruột lá. Đồng thời, thuật toán <b>Smart Deshadow</b> tự động phát hiện và triệt tiêu bóng đen lem dưới đáy.
+            </p>
+          </div>
+          <div class="exp-card">
+            <span class="step-num">4</span>
+            <h3>Thu gọn viền & Khử lem màu (Edge Trim & Defringe)</h3>
+            <p>
+              Thanh trượt <b>Thu gọn viền</b> cho phép bóc tách viền giấy trắng của sticker từ 0 - 6px chỉ trong 10ms. 
+              Công nghệ Defringe triệt tiêu hoàn toàn viền đen bẩn khi xuất ảnh trong suốt.
+            </p>
+          </div>
+          <div class="exp-card">
+            <span class="step-num">5</span>
+            <h3>Đũa thần 1 chạm & Cọ chỉnh sửa thời gian thực</h3>
+            <p>
+              Công cụ <b>🪄 Đũa thần</b> cho phép bấm 1 nhấp chuột để xóa sạch tức thì bất kỳ mảng bóng đổ, chữ viết tay hay mũi tên thừa mà AI còn sót. 
+              Thao tác tức thời 60fps trên ảnh gốc đầy đủ độ phân giải.
+            </p>
+          </div>
+          <div class="exp-card">
+            <span class="step-num">6</span>
+            <h3>Bảo mật 100% & Giữ nguyên độ phân giải</h3>
+            <p>
+              Ảnh <b>không bao giờ rời khỏi thiết bị của bạn</b>. Mọi quá trình bóc tách diễn ra cục bộ trong bộ nhớ RAM trình duyệt, 
+              kết quả xuất ra giữ nguyên 100% kích thước pixel gốc ban đầu.
+            </p>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <footer class="footer">
-      <strong>UyCut AI</strong> · Phát triển bởi <b>Uy</b> · Xử lý 100% trên thiết bị người dùng · Mô hình: IS-Net qua <a href="https://github.com/imgly/background-removal-js" target="_blank" rel="noopener">@imgly/background-removal</a> (AGPL-3.0)
+    <footer class="app-footer">
+      <p>UyCut AI · Được thiết kế & phát triển bởi <b>Uy</b> · Chạy Client-side trên Vercel.</p>
     </footer>
 
     <script type="module" src="/src/main.js"></script>

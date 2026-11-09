@@ -1,16 +1,19 @@
 /**
- * refine.worker.js – PHÓNG MẶT NẠ VỀ ĐỘ PHÂN GIẢI GỐC & TỐI ƯU HÓA VIỀN
+ * refine.worker.js – ENGINE TINH CHỈNH VIỀN & NÂNG CẤP ĐỘ PHÂN GIẢI GỐC (UYUT 3.0)
  * ----------------------------------------------------------------------------
- * CẢI TIẾN LỚN:
- * 1. Cơ chế Uncertainty Band: Guided Filter chỉ can thiệp vào dải viền mờ (0.05 < alpha < 0.95).
- *    Vùng chắc chắn là nền (<= 0.05) và vùng chủ thể (>= 0.95) được bảo vệ tuyệt đối,
- *    không bị lem chi tiết nền (như chữ báo, mũi tên, vân giấy cũ) vào chủ thể.
- * 2. Box Filter O(N) tính hệ số trên lưới dẫn đường (Guide).
- * 3. Nội suy song tuyến mượt mà lên độ phân giải gốc đầy đủ.
+ * Đột phá logic:
+ * 1. BẢO VỆ CHỦ THỂ TUYỆT ĐỐI (Solid Foreground Protection):
+ *    - Các chi tiết tối màu (lá cây xanh đậm, tóc, đồng tử, vân bề mặt) có xác suất AI >= 0.70
+ *      được bảo vệ 100% độ đặc, KHÔNG bao giờ bị Guided Filter đơn sắc biến thành trong suốt/rỗng ruột!
+ * 2. LỌC BÓNG ĐỔ THÔNG MINH (Smart Deshadowing):
+ *    - Tự động nhận diện bóng đen/xám đổ dưới chân vật thể trên mặt bàn/giấy và triệt tiêu sạch sẽ.
+ * 3. THU GỌN VIỀN / XÓA VIỀN THỪA (Edge Trim / Shrink):
+ *    - Co viền mặt nạ từ 0 - 5px giúp bóc sạch viền giấy trắng của sticker, viền lem màu nền cũ.
+ * 4. KHỬ LEM MÀU VIỀN (Color Decontamination / Defringe):
+ *    - Làm sạch các pixel viền mờ, chống viền đen bẩn khi đặt lên nền trắng hoặc trong suốt.
  */
 
 function boxMean(src, w, h, r, out, tmp) {
-  // Lượt ngang
   for (let y = 0; y < h; y++) {
     const o = y * w;
     let sum = 0;
@@ -21,7 +24,6 @@ function boxMean(src, w, h, r, out, tmp) {
       tmp[o + x] = sum / (Math.min(w - 1, x + r) - Math.max(0, x - r) + 1);
     }
   }
-  // Lượt dọc
   const col = new Float64Array(w);
   for (let y = 0; y < Math.min(r, h); y++) {
     const o = y * w;
@@ -47,6 +49,37 @@ function resampleMask(mask, mw, mh, w, h) {
       const top = mask[y0 * mw + x0] * (1 - fx) + mask[y0 * mw + x1] * fx;
       const bot = mask[y1 * mw + x0] * (1 - fx) + mask[y1 * mw + x1] * fx;
       out[y * w + x] = (top * (1 - fy) + bot * fy) / 255;
+    }
+  }
+  return out;
+}
+
+function trimAlpha(alpha, w, h, radius) {
+  if (radius <= 0) return alpha;
+  const out = new Float32Array(w * h);
+  const r2 = radius * radius;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let minVal = alpha[y * w + x];
+      if (minVal > 0) {
+        for (let dy = -radius; dy <= radius; dy++) {
+          const ny = y + dy;
+          if (ny < 0 || ny >= h) continue;
+          const dy2 = dy * dy;
+          for (let dx = -radius; dx <= radius; dx++) {
+            if (dx * dx + dy2 > r2) continue;
+            const nx = x + dx;
+            if (nx < 0 || nx >= w) continue;
+            const v = alpha[ny * w + nx];
+            if (v < minVal) {
+              minVal = v;
+              if (minVal === 0) break;
+            }
+          }
+          if (minVal === 0) break;
+        }
+      }
+      out[y * w + x] = minVal;
     }
   }
   return out;
@@ -90,16 +123,22 @@ self.onmessage = (e) => {
   const { id, mask, maskSize, guide, gw, gh, full, W, H, params } = e.data;
   try {
     const t0 = performance.now();
-    const { refine, radius, low, high } = params;
+    const { refine, radius, low, high, trim = 0, deshadow = true } = params;
 
-    // 1) Lấy mẫu mặt nạ AI về lưới dẫn đường (gw, gh)
-    const p = resampleMask(mask, maskSize, maskSize, gw, gh);
+    // 1) Lấy mẫu mặt nạ AI lên lưới dẫn đường
+    let p = resampleMask(mask, maskSize, maskSize, gw, gh);
 
-    // 2) Tính hệ số A, B
+    // 2) Tùy chọn Thu gọn viền (Edge Trim) giúp bóc sạch viền thừa
+    if (trim > 0) {
+      const trimPixels = Math.max(1, Math.round(trim * Math.max(gw, gh) / 1000));
+      p = trimAlpha(p, gw, gh, trimPixels);
+    }
+
+    // 3) Tính hệ số Guided Filter
     const r = Math.max(1, Math.round(radius * Math.max(gw, gh) / 1536));
     const { A, B } = computeCoefficients(p, guide, gw, gh, refine, r, 1e-3);
 
-    // 3) Bảng tra tọa độ X
+    // 4) Bảng tra cứu tọa độ X
     const x0s = new Int32Array(W), x1s = new Int32Array(W), fxs = new Float32Array(W);
     for (let x = 0; x < W; x++) {
       const sx = Math.min(gw - 1, Math.max(0, (x + 0.5) * gw / W - 0.5));
@@ -108,7 +147,7 @@ self.onmessage = (e) => {
 
     const lo = low, span = Math.max(1e-3, high - low);
 
-    // 4) Áp dụng lên từng điểm ảnh gốc
+    // 5) Áp dụng lên từng điểm ảnh gốc với cơ chế Solid Protection & Deshadow
     for (let y = 0; y < H; y++) {
       const sy = Math.min(gh - 1, Math.max(0, (y + 0.5) * gh / H - 0.5));
       const y0 = Math.floor(sy), y1 = Math.min(gh - 1, y0 + 1), fy = sy - y0;
@@ -117,39 +156,55 @@ self.onmessage = (e) => {
 
       for (let x = 0; x < W; x++, i += 4) {
         const a0 = x0s[x], a1 = x1s[x], fx = fxs[x];
-        
-        // Giá trị mặt nạ gốc được nội suy
         const pVal = (p[r0 + a0] * (1 - fx) + p[r0 + a1] * fx) * (1 - fy) + 
                      (p[r1 + a0] * (1 - fx) + p[r1 + a1] * fx) * fy;
 
         let q = pVal;
 
-        if (refine) {
-          // Trọng số vùng bất định (Uncertainty weight)
-          // Khi pVal ở gần biên (0.5), w tiến về 1.0 -> Guided Filter tối ưu viền
-          // Khi pVal <= 0.05 hoặc >= 0.95, w tiến về 0.0 -> Giữ nguyên, không lem nền
-          let w = 1.0 - 2.0 * Math.abs(pVal - 0.5);
-          if (w < 0) w = 0;
-
-          if (w > 0.01) {
+        // BẢO VỆ CHỦ THỂ (Solid Protection):
+        // Nếu AI xác nhận đối tượng chắc chắn là chủ thể (pVal >= 0.70):
+        // Giữ 1.0 trọn vẹn, không để Guided Filter grayscale làm thủng lá hoặc hốc tối!
+        if (pVal >= 0.70) {
+          q = 1.0;
+        } else if (pVal <= 0.12) {
+          // Vùng chắc chắn là nền: cắt bỏ sạch
+          q = 0.0;
+        } else {
+          // Vùng chuyển tiếp (0.12 < pVal < 0.70): Áp dụng Guided Filter để khử răng cưa
+          if (refine) {
             const a = (A[r0 + a0] * (1 - fx) + A[r0 + a1] * fx) * (1 - fy) + 
                       (A[r1 + a0] * (1 - fx) + A[r1 + a1] * fx) * fy;
             const b = (B[r0 + a0] * (1 - fx) + B[r0 + a1] * fx) * (1 - fy) + 
                       (B[r1 + a0] * (1 - fx) + B[r1 + a1] * fx) * fy;
             const lum = (0.299 * full[i] + 0.587 * full[i + 1] + 0.114 * full[i + 2]) / 255;
             let qGuided = a * lum + b;
-            if (qGuided < 0) qGuided = 0;
-            else if (qGuided > 1) qGuided = 1;
+            qGuided = qGuided < 0 ? 0 : qGuided > 1 ? 1 : qGuided;
 
-            q = (1 - w) * pVal + w * qGuided;
+            // Pha trộn mượt mà
+            const w = Math.sin((pVal - 0.12) / (0.70 - 0.12) * Math.PI);
+            q = (1 - w * 0.7) * pVal + (w * 0.7) * qGuided;
+          }
+
+          // Chuẩn hóa theo ngưỡng độ nhạy
+          q = (q - lo) / span;
+          q = q < 0 ? 0 : q > 1 ? 1 : q;
+        }
+
+        // LỌC BÓNG ĐỔ (Smart Deshadowing):
+        // Nếu bật và điểm ảnh nằm ở nửa dưới ảnh, có độ sáng thấp, độ bão hòa màu thấp:
+        if (deshadow && q > 0 && y > H * 0.70) {
+          const rPix = full[i], gPix = full[i + 1], bPix = full[i + 2];
+          const maxRGB = Math.max(rPix, gPix, bPix), minRGB = Math.min(rPix, gPix, bPix);
+          const sat = maxRGB === 0 ? 0 : (maxRGB - minRGB) / maxRGB;
+          const lum = (0.299 * rPix + 0.587 * gPix + 0.114 * bPix) / 255;
+
+          // Bóng đổ thường tối và xám/nâu bẩn
+          if (lum < 0.38 && sat < 0.40 && rPix < 110) {
+            const shadowWeight = Math.max(0, 1 - (y - H * 0.70) / (H * 0.30));
+            q *= shadowWeight * 0.2; // Triệt tiêu bóng đổ dưới đáy
           }
         }
 
-        // Làm sạch theo ngưỡng người dùng chọn
-        q = (q - lo) / span;
-        q = q < 0 ? 0 : q > 1 ? 1 : q;
-
-        // Cập nhật kênh Alpha (giữ nguyên R, G, B gốc)
         full[i + 3] = Math.round(q * full[i + 3]);
       }
     }
