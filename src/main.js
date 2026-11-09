@@ -18,7 +18,8 @@ const GUIDE_MAX = 1536;
 const $ = (id) => document.getElementById(id);
 const els = {
   drop: $('dropzone'), input: $('fileInput'), model: $('modelSelect'),
-  refine: $('refineToggle'), deshadow: $('deshadowToggle'),
+  keepMain: $('keepMainToggle'), refine: $('refineToggle'), deshadow: $('deshadowToggle'),
+  stripSticker: $('stripStickerBtn'), resetBorder: $('resetBorderBtn'),
   trim: $('trimRange'), trimVal: $('trimVal'),
   radius: $('radiusRange'), low: $('lowRange'), high: $('highRange'),
   thresh: $('threshRange'), threshVal: $('threshVal'),
@@ -82,6 +83,7 @@ function getParams() {
   const high = Math.max(0.55, Math.min(1, highOffset + delta));
 
   return {
+    keepMain: els.keepMain ? els.keepMain.checked : true,
     refine: els.refine.checked,
     deshadow: els.deshadow.checked,
     trim: +els.trim.value,
@@ -569,9 +571,21 @@ async function refineSelected() {
 }
 
 ['input', 'change'].forEach((ev) => {
-  [els.thresh, els.trim, els.radius, els.low, els.high, els.refine, els.deshadow].forEach((el) => {
+  [els.thresh, els.trim, els.radius, els.low, els.high, els.refine, els.deshadow, els.keepMain].filter(Boolean).forEach((el) => {
     el.addEventListener(ev, onParamsChange);
   });
+});
+
+els.stripSticker?.addEventListener('click', () => {
+  els.trim.value = 3;
+  els.thresh.value = 52;
+  onParamsChange();
+});
+
+els.resetBorder?.addEventListener('click', () => {
+  els.trim.value = 0;
+  els.thresh.value = 50;
+  onParamsChange();
 });
 
 // Tự động chạy lại AI khi người dùng chọn mô hình khác trong dropdown

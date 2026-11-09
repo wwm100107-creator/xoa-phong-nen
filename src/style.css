@@ -115,6 +115,13 @@ select {
 .hint { color: #6b7387; font-size: 12px; margin: 6px 0 0; line-height: 1.4; }
 .switch { display: flex; gap: 10px; align-items: center; font-size: 13px; cursor: pointer; margin-top: 8px; }
 .switch input { accent-color: var(--accent); width: 17px; height: 17px; }
+.quick-presets { display: flex; gap: 8px; margin-top: 10px; }
+.preset-btn {
+  flex: 1; padding: 6px 10px; font-size: 12px; font-weight: 600; border-radius: 8px;
+  background: rgba(124, 92, 255, 0.15); color: #c4b5fd; border: 1px solid rgba(124, 92, 255, 0.35);
+  cursor: pointer; transition: 0.15s;
+}
+.preset-btn:hover { background: rgba(124, 92, 255, 0.3); color: #fff; border-color: var(--accent); }
 .slider { margin-top: 12px; }
 .slider label { display: flex; justify-content: space-between; font-size: 13px; color: #c4c9d6; }
 .slider b { color: var(--accent-2); font-weight: 600; }

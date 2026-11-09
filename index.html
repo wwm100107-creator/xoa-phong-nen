@@ -14,8 +14,8 @@
       <div class="brand">
         <img src="/logo.svg" alt="UyCut AI Logo" class="brand-logo" />
         <div class="brand-text">
-          <span class="brand-name">UyCut <span class="badge">AI 3.0</span></span>
-          <span class="brand-tagline">Tách nền chuẩn độ phân giải gốc · Made by Uy</span>
+          <span class="brand-name">UyCut <span class="badge">AI 4.0</span></span>
+          <span class="brand-tagline">Tách nền cực hạn chuẩn độ phân giải gốc · Made by Uy</span>
         </div>
       </div>
       <nav class="header-nav">
@@ -48,6 +48,10 @@
 
           <h2>Tinh chỉnh viền & Khử rác</h2>
           <label class="switch">
+            <input id="keepMainToggle" type="checkbox" checked />
+            <span>Lọc sạch rác nền & vật thể phụ (Chủ thể chính)</span>
+          </label>
+          <label class="switch">
             <input id="refineToggle" type="checkbox" checked />
             <span>Bám viền theo ảnh gốc (Guided Filter)</span>
           </label>
@@ -55,6 +59,10 @@
             <input id="deshadowToggle" type="checkbox" checked />
             <span>Tự động xóa bóng đổ (Deshadow)</span>
           </label>
+          <div class="quick-presets">
+            <button type="button" id="stripStickerBtn" class="preset-btn" title="Tự động bóc sạch viền giấy trắng của sticker, chỉ giữ lại ruột quả/vật thể">✂️ Bóc viền Sticker</button>
+            <button type="button" id="resetBorderBtn" class="preset-btn" title="Khôi phục lại viền gốc">↺ Giữ nguyên viền</button>
+          </div>
           <div class="slider">
             <label for="threshRange">Độ nhạy tách nền <b id="threshVal">50%</b></label>
             <input id="threshRange" type="range" min="10" max="90" value="50" />

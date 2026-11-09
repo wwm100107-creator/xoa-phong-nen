@@ -1,16 +1,18 @@
 /**
- * refine.worker.js – ENGINE TINH CHỈNH VIỀN & NÂNG CẤP ĐỘ PHÂN GIẢI GỐC (UYUT 3.0)
+ * refine.worker.js – ENGINE TINH CHỈNH VIỀN & NÂNG CẤP ĐỘ PHÂN GIẢI GỐC (UYUT 4.0 - CỰC HẠN)
  * ----------------------------------------------------------------------------
- * Đột phá logic:
+ * Đột phá chất lượng đỉnh cao:
  * 1. BẢO VỆ CHỦ THỂ TUYỆT ĐỐI (Solid Foreground Protection):
- *    - Các chi tiết tối màu (lá cây xanh đậm, tóc, đồng tử, vân bề mặt) có xác suất AI >= 0.70
- *      được bảo vệ 100% độ đặc, KHÔNG bao giờ bị Guided Filter đơn sắc biến thành trong suốt/rỗng ruột!
- * 2. LỌC BÓNG ĐỔ THÔNG MINH (Smart Deshadowing):
- *    - Tự động nhận diện bóng đen/xám đổ dưới chân vật thể trên mặt bàn/giấy và triệt tiêu sạch sẽ.
- * 3. THU GỌN VIỀN / XÓA VIỀN THỪA (Edge Trim / Shrink):
- *    - Co viền mặt nạ từ 0 - 5px giúp bóc sạch viền giấy trắng của sticker, viền lem màu nền cũ.
- * 4. KHỬ LEM MÀU VIỀN (Color Decontamination / Defringe):
- *    - Làm sạch các pixel viền mờ, chống viền đen bẩn khi đặt lên nền trắng hoặc trong suốt.
+ *    - Xác suất AI >= 0.70 khóa chặt 100% độ đặc (alpha = 1.0), không bao giờ rỗng ruột lá hoặc tóc.
+ * 2. LỌC RÁC NỀN & VẬT THỂ THỨ CẤP (Primary Subject Connected Component Filter):
+ *    - Tự động nhận diện chủ thể chính lớn nhất ở trung tâm ảnh.
+ *    - Triệt tiêu 100% các mảnh rác nền tách rời: vết ố vàng góc dưới, con số, chữ viết rải rác, bụi nền.
+ * 3. TRIỆT TIÊU BÓNG ĐỔ TOÀN DIỆN (Cast Shadow Annihilator):
+ *    - Nhận diện bóng đổ ở đáy chân vật thể trên bề mặt giấy/bàn và triệt tiêu sạch sẽ.
+ * 4. THU GỌN VIỀN / BÓC VIỀN STICKER (Sticker Margin Stripper / Trim):
+ *    - Co viền sắc nét giúp bóc sạch viền trắng của tem dán sticker hoặc viền đen lem nhem.
+ * 5. KHỬ LEM MÀU VIỀN (Color Decontamination / Defringe):
+ *    - Thay thế màu viền bị ám nền cũ bằng màu thật của chủ thể, chống viền lem đen/trắng khi xuất ra.
  */
 
 function boxMean(src, w, h, r, out, tmp) {
@@ -50,6 +52,144 @@ function resampleMask(mask, mw, mh, w, h) {
       const bot = mask[y1 * mw + x0] * (1 - fx) + mask[y1 * mw + x1] * fx;
       out[y * w + x] = (top * (1 - fy) + bot * fy) / 255;
     }
+  }
+  return out;
+}
+
+/**
+ * Thuật toán LỌC RÁC NỀN & VẬT THỂ THỨ CẤP (Primary Subject Focus / Connected Component Filter)
+ * Tự động loại bỏ hoàn toàn các vết ố vàng góc ảnh, con số, chữ viết tách rời.
+ */
+function filterPrimarySubject(p, w, h) {
+  const N = w * h;
+  const bin = new Uint8Array(N);
+  for (let i = 0; i < N; i++) {
+    if (p[i] >= 0.20) bin[i] = 1;
+  }
+
+  // Morphological opening (Erode r=2 -> Dilate r=2) để cắt đứt các cầu nối mỏng do bóng đổ
+  const eroded = new Uint8Array(N);
+  const rErode = 2;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!bin[y * w + x]) continue;
+      let ok = 1;
+      for (let dy = -rErode; dy <= rErode && ok; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) { ok = 0; break; }
+        for (let dx = -rErode; dx <= rErode; dx++) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= w || !bin[ny * w + nx]) { ok = 0; break; }
+        }
+      }
+      eroded[y * w + x] = ok;
+    }
+  }
+
+  const opened = new Uint8Array(N);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!eroded[y * w + x]) continue;
+      for (let dy = -rErode; dy <= rErode; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -rErode; dx <= rErode; dx++) {
+          const nx = x + dx;
+          if (nx >= 0 && nx < w) opened[ny * w + nx] = 1;
+        }
+      }
+    }
+  }
+
+  // Gắn nhãn các cụm liên thông (Connected Component Labeling)
+  const labels = new Int32Array(N);
+  let compId = 0;
+  const comps = [];
+  const cx0 = w / 2, cy0 = h / 2;
+  const maxDist = Math.sqrt(cx0 * cx0 + cy0 * cy0);
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      if (!opened[idx] || labels[idx] > 0) continue;
+
+      compId++;
+      let area = 0, sumX = 0, sumY = 0;
+      let minX = x, maxX = x, minY = y, maxY = y;
+      const q = [idx];
+      labels[idx] = compId;
+
+      while (q.length > 0) {
+        const curr = q.pop();
+        const px = curr % w, py = Math.floor(curr / w);
+        area++;
+        sumX += px; sumY += py;
+        if (px < minX) minX = px; if (px > maxX) maxX = px;
+        if (py < minY) minY = py; if (py > maxY) maxY = py;
+
+        const neighbors = [
+          px > 0 ? curr - 1 : -1,
+          px < w - 1 ? curr + 1 : -1,
+          py > 0 ? curr - w : -1,
+          py < h - 1 ? curr + w : -1,
+        ];
+        for (const n of neighbors) {
+          if (n >= 0 && opened[n] && labels[n] === 0) {
+            labels[n] = compId;
+            q.push(n);
+          }
+        }
+      }
+
+      const meanX = sumX / area, meanY = sumY / area;
+      const dist = Math.sqrt((meanX - cx0) * (meanX - cx0) + (meanY - cy0) * (meanY - cy0));
+      const centerFactor = Math.max(0.1, 1 - dist / maxDist);
+      const score = area * Math.pow(centerFactor, 1.8);
+
+      comps.push({ id: compId, area, minX, maxX, minY, maxY, meanX, meanY, score });
+    }
+  }
+
+  if (comps.length === 0) return p;
+
+  // Sắp xếp các cụm theo điểm trọng tâm & diện tích
+  comps.sort((a, b) => b.score - a.score);
+  const mainComp = comps[0];
+  const validIds = new Set([mainComp.id]);
+
+  // Giữ lại các cụm lớn khác nếu diện tích >= 35% cụm chính (trường hợp nhiều người/vật thể cùng chụp)
+  for (let i = 1; i < comps.length; i++) {
+    if (comps[i].area >= mainComp.area * 0.35) {
+      validIds.add(comps[i].id);
+    }
+  }
+
+  // Đánh dấu các pixel thuộc cụm hợp lệ và giãn nở (dilate) bù lại vùng viền đã xói mòn
+  const validMap = new Uint8Array(N);
+  for (let i = 0; i < N; i++) {
+    if (labels[i] > 0 && validIds.has(labels[i])) validMap[i] = 1;
+  }
+
+  const dilatedValid = new Uint8Array(N);
+  const rDilate = rErode + 3;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!validMap[y * w + x]) continue;
+      for (let dy = -rDilate; dy <= rDilate; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -rDilate; dx <= rDilate; dx++) {
+          const nx = x + dx;
+          if (nx >= 0 && nx < w) dilatedValid[ny * w + nx] = 1;
+        }
+      }
+    }
+  }
+
+  // Triệt tiêu tất cả các điểm ảnh rác không thuộc chủ thể hợp lệ
+  const out = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    out[i] = dilatedValid[i] ? p[i] : 0.0;
   }
   return out;
 }
@@ -123,22 +263,27 @@ self.onmessage = (e) => {
   const { id, mask, maskSize, guide, gw, gh, full, W, H, params } = e.data;
   try {
     const t0 = performance.now();
-    const { refine, radius, low, high, trim = 0, deshadow = true } = params;
+    const { refine, radius, low, high, trim = 0, deshadow = true, keepMain = true } = params;
 
     // 1) Lấy mẫu mặt nạ AI lên lưới dẫn đường
     let p = resampleMask(mask, maskSize, maskSize, gw, gh);
 
-    // 2) Tùy chọn Thu gọn viền (Edge Trim) giúp bóc sạch viền thừa
+    // 2) LỌC SẠCH RÁC NỀN & VẬT THỂ PHỤ (Primary Subject Focus)
+    if (keepMain) {
+      p = filterPrimarySubject(p, gw, gh);
+    }
+
+    // 3) Tùy chọn Thu gọn viền / Bóc viền Sticker (Edge Trim)
     if (trim > 0) {
       const trimPixels = Math.max(1, Math.round(trim * Math.max(gw, gh) / 1000));
       p = trimAlpha(p, gw, gh, trimPixels);
     }
 
-    // 3) Tính hệ số Guided Filter
+    // 4) Tính hệ số Guided Filter
     const r = Math.max(1, Math.round(radius * Math.max(gw, gh) / 1536));
     const { A, B } = computeCoefficients(p, guide, gw, gh, refine, r, 1e-3);
 
-    // 4) Bảng tra cứu tọa độ X
+    // 5) Bảng tra cứu tọa độ X
     const x0s = new Int32Array(W), x1s = new Int32Array(W), fxs = new Float32Array(W);
     for (let x = 0; x < W; x++) {
       const sx = Math.min(gw - 1, Math.max(0, (x + 0.5) * gw / W - 0.5));
@@ -147,7 +292,21 @@ self.onmessage = (e) => {
 
     const lo = low, span = Math.max(1e-3, high - low);
 
-    // 5) Áp dụng lên từng điểm ảnh gốc với cơ chế Solid Protection & Deshadow
+    // Tìm cận dưới của chủ thể (Bottom Y) để tính toán vùng bóng đổ chân
+    let subjMinY = H, subjMaxY = 0;
+    for (let y = 0; y < gh; y += 4) {
+      for (let x = 0; x < gw; x += 4) {
+        if (p[y * gw + x] > 0.5) {
+          const sy = Math.round(y * H / gh);
+          if (sy < subjMinY) subjMinY = sy;
+          if (sy > subjMaxY) subjMaxY = sy;
+        }
+      }
+    }
+    const subjH = Math.max(1, subjMaxY - subjMinY);
+    const shadowStartY = subjMaxY - subjH * 0.22;
+
+    // 6) Áp dụng lên từng điểm ảnh gốc với cơ chế Solid Protection & Deshadow
     for (let y = 0; y < H; y++) {
       const sy = Math.min(gh - 1, Math.max(0, (y + 0.5) * gh / H - 0.5));
       const y0 = Math.floor(sy), y1 = Math.min(gh - 1, y0 + 1), fy = sy - y0;
@@ -166,11 +325,11 @@ self.onmessage = (e) => {
         // Giữ 1.0 trọn vẹn, không để Guided Filter grayscale làm thủng lá hoặc hốc tối!
         if (pVal >= 0.70) {
           q = 1.0;
-        } else if (pVal <= 0.12) {
+        } else if (pVal <= 0.10) {
           // Vùng chắc chắn là nền: cắt bỏ sạch
           q = 0.0;
         } else {
-          // Vùng chuyển tiếp (0.12 < pVal < 0.70): Áp dụng Guided Filter để khử răng cưa
+          // Vùng chuyển tiếp viền (0.10 < pVal < 0.70): Áp dụng Guided Filter để khử răng cưa
           if (refine) {
             const a = (A[r0 + a0] * (1 - fx) + A[r0 + a1] * fx) * (1 - fy) + 
                       (A[r1 + a0] * (1 - fx) + A[r1 + a1] * fx) * fy;
@@ -181,7 +340,7 @@ self.onmessage = (e) => {
             qGuided = qGuided < 0 ? 0 : qGuided > 1 ? 1 : qGuided;
 
             // Pha trộn mượt mà
-            const w = Math.sin((pVal - 0.12) / (0.70 - 0.12) * Math.PI);
+            const w = Math.sin((pVal - 0.10) / (0.70 - 0.10) * Math.PI);
             q = (1 - w * 0.7) * pVal + (w * 0.7) * qGuided;
           }
 
@@ -190,18 +349,19 @@ self.onmessage = (e) => {
           q = q < 0 ? 0 : q > 1 ? 1 : q;
         }
 
-        // LỌC BÓNG ĐỔ (Smart Deshadowing):
-        // Nếu bật và điểm ảnh nằm ở nửa dưới ảnh, có độ sáng thấp, độ bão hòa màu thấp:
-        if (deshadow && q > 0 && y > H * 0.70) {
+        // LỌC BÓNG ĐỔ TOÀN DIỆN (Cast Shadow Annihilator):
+        if (deshadow && q > 0 && y >= shadowStartY) {
           const rPix = full[i], gPix = full[i + 1], bPix = full[i + 2];
           const maxRGB = Math.max(rPix, gPix, bPix), minRGB = Math.min(rPix, gPix, bPix);
           const sat = maxRGB === 0 ? 0 : (maxRGB - minRGB) / maxRGB;
           const lum = (0.299 * rPix + 0.587 * gPix + 0.114 * bPix) / 255;
 
-          // Bóng đổ thường tối và xám/nâu bẩn
-          if (lum < 0.38 && sat < 0.40 && rPix < 110) {
-            const shadowWeight = Math.max(0, 1 - (y - H * 0.70) / (H * 0.30));
-            q *= shadowWeight * 0.2; // Triệt tiêu bóng đổ dưới đáy
+          // Bóng đổ có đặc điểm: nằm ở phần đáy, độ bão hòa màu thấp (xám/nâu/đen) và độ sáng vừa phải
+          if (sat < 0.35 && lum < 0.55) {
+            const progress = (y - shadowStartY) / (subjMaxY - shadowStartY + 1e-4);
+            // Giảm mạnh độ trong suốt của bóng đổ
+            const shadowFade = Math.max(0, 1 - progress * 1.5);
+            q *= shadowFade * (sat / 0.35);
           }
         }
 
