@@ -6,6 +6,7 @@
  * Kết quả là các "lớp" mặt nạ, được ghép trong refine.core.js.
  */
 import { predictWithModel, MODEL_SIZE } from './rmbg.js';
+import { boxMean } from './refine.core.js';
 
 export function resizeHQ(src, w, h) {
   let cur = src, cw = src.width, ch = src.height;
@@ -27,11 +28,53 @@ export function resizeHQ(src, w, h) {
 }
 
 /**
- * Chạy mô hình chính rồi bổ sung bằng mô hình phụ. Mỗi mô hình có điểm mù riêng:
- * RMBG hiểu chủ thể tốt nhưng hay bỏ sót viền giấy của sticker, ormbg bắt được viền
- * nhưng hay nhận cả lề đường hay mặt đất. Mô hình phụ chỉ được thêm vào nơi RMBG
- * ít nhất cũng có chút nghi ngờ (p >= 0.01); nơi RMBG khẳng định 0 thì giữ nguyên.
+ * Bổ sung mặt nạ chính bằng mô hình phụ, xét theo từng mảng thay vì từng điểm.
+ * RMBG hiểu chủ thể tốt nhưng hay bỏ sót viền giấy của sticker (chỉ cho 1-3%), ormbg
+ * bắt được viền nhưng hay nhận cả lề đường hay mặt đất (nơi RMBG cho đúng 0).
+ * Một mảng chỉ có ormbg tin được giữ lại khi phần lớn mảng RMBG có tín hiệu dù rất nhỏ
+ * và mảng nằm ôm sát chủ thể; ngưỡng theo từng điểm sẽ biến viền thành vệt mờ.
  */
+function mergeAssist(mask, assist) {
+  const S = MODEL_SIZE, N = S * S;
+  const solid = new Float32Array(N), nearSolid = new Float32Array(N), tmp = new Float32Array(N);
+  for (let i = 0; i < N; i++) solid[i] = mask[i] >= 0.5 ? 1 : 0;
+  boxMean(solid, S, S, Math.round(S * 0.04), nearSolid, tmp);
+
+  const seen = new Uint8Array(N), stack = new Int32Array(N);
+  const accepted = new Float32Array(N);
+  const isCandidate = (i) => assist[i] >= 0.5 && mask[i] < 0.5;
+
+  for (let seed = 0; seed < N; seed++) {
+    if (seen[seed] || !isCandidate(seed)) continue;
+    let sp = 0, total = 0, supported = 0, hugging = 0;
+    const members = [];
+    stack[sp++] = seed;
+    seen[seed] = 1;
+    while (sp > 0) {
+      const cur = stack[--sp], x = cur % S;
+      members.push(cur);
+      total++;
+      if (mask[cur] >= 0.005) supported++;
+      if (nearSolid[cur] > 0) hugging++;
+      for (const next of [x > 0 ? cur - 1 : -1, x < S - 1 ? cur + 1 : -1, cur - S, cur + S]) {
+        if (next < 0 || next >= N || seen[next] || !isCandidate(next)) continue;
+        seen[next] = 1;
+        stack[sp++] = next;
+      }
+    }
+    if (supported / total >= 0.5 && hugging / total >= 0.5) {
+      for (const m of members) accepted[m] = 1;
+    }
+  }
+
+  // Lấy cả rìa mềm của mảng được chọn để viền không bị cắt đột ngột
+  const rim = new Float32Array(N);
+  boxMean(accepted, S, S, 6, rim, tmp);
+  for (let i = 0; i < N; i++) {
+    if (rim[i] > 0 && assist[i] > mask[i]) mask[i] = assist[i];
+  }
+}
+
 async function predictMerged(canvas, onProgress) {
   const mask = await predictWithModel(canvas, 'main', onProgress);
   let assist;
@@ -41,11 +84,7 @@ async function predictMerged(canvas, onProgress) {
     console.warn('Không dùng được mô hình phụ, tiếp tục với mô hình chính:', err);
     return mask;
   }
-  for (let i = 0; i < mask.length; i++) {
-    const gate = Math.max(0, Math.min(1, (mask[i] - 0.01) / 0.03));
-    const candidate = assist[i] * gate;
-    if (candidate > mask[i]) mask[i] = candidate;
-  }
+  mergeAssist(mask, assist);
   return mask;
 }
 

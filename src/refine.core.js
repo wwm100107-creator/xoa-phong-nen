@@ -138,18 +138,20 @@ export function removeStrayIslands(p, w, h) {
   const labels = new Int32Array(N); // 0 = chưa gán
   const stack = new Int32Array(N);
   const core = [0]; // số điểm chắc chắn (p >= 0.5) của từng cụm, chỉ số từ 1
+  const touchesFrame = [false];
   let count = 0;
 
   for (let seed = 0; seed < N; seed++) {
     if (p[seed] < SURE_LOW || labels[seed]) continue;
     count++;
-    let c = 0, sp = 0;
+    let c = 0, sp = 0, touches = false;
     stack[sp++] = seed;
     labels[seed] = count;
     while (sp > 0) {
       const cur = stack[--sp];
       if (p[cur] >= 0.5) c++;
       const cx = cur % w;
+      if (cx === 0 || cx === w - 1 || cur < w || cur >= N - w) touches = true;
       for (let ny = -1; ny <= 1; ny++) {
         const row = cur + ny * w;
         if (row < 0 || row >= N) continue;
@@ -162,6 +164,7 @@ export function removeStrayIslands(p, w, h) {
       }
     }
     core.push(c);
+    touchesFrame.push(touches);
   }
   if (count < 2) return p;
 
@@ -170,7 +173,11 @@ export function removeStrayIslands(p, w, h) {
   if (mainCore === 0) return p;
 
   const kept = new Uint8Array(count + 1);
-  for (let i = 1; i <= count; i++) if (core[i] >= mainCore * 0.03) kept[i] = 1;
+  for (let i = 1; i <= count; i++) {
+    // Mảnh nhỏ bị khung ảnh cắt ngang thường là đồ vật nền, không phải chủ thể thứ hai
+    const minCore = touchesFrame[i] ? 0.2 : 0.03;
+    if (core[i] >= mainCore * minCore) kept[i] = 1;
+  }
 
   // Lan dần: cụm nằm gần cụm đã giữ cũng được giữ
   const R = Math.max(3, Math.round(Math.max(w, h) * 0.03));
@@ -307,7 +314,7 @@ function dropDetached(labels, small, w, h) {
 export function decideRegions(p, guide, gw, gh) {
   const k = Math.min(1, REGION_GRID / Math.max(gw, gh));
   const sw = Math.max(1, Math.round(gw * k)), sh = Math.max(1, Math.round(gh * k));
-  if (sw < 8 || sh < 8) return p;
+  if (sw < 8 || sh < 8) return { p, crisp: null };
 
   const n = sw * sh;
   const rgb = new Uint8Array(n * 3), small = new Float32Array(n);
@@ -338,7 +345,7 @@ export function decideRegions(p, guide, gw, gh) {
     else if (small[i] >= 0.9) labels[i] = LABEL.FG;
     else labels[i] = small[i] >= 0.08 ? LABEL.PROBABLE_FG : LABEL.PROBABLE_BG;
   }
-  if (!grabCut(rgb, labels, sw, sh)) return p;
+  if (!grabCut(rgb, labels, sw, sh)) return { p, crisp: null };
   const zone = expandPromotedRegions(rgb, labels, small, sw, sh);
   dropDetached(labels, small, sw, sh);
 
@@ -378,7 +385,7 @@ export function decideRegions(p, guide, gw, gh) {
       else p[i] = v * clip01(1 - toFg[i] / margin);
     }
   }
-  return p;
+  return { p, crisp: inZone };
 }
 
 /** Tách kênh màu của lưới dẫn RGBA thành 3 mảng số thực 0..1. */
@@ -444,7 +451,7 @@ function colorGuidedFilter(p, R, G, B, w, h, radius, eps) {
 }
 
 /** Alpha tại một điểm thuộc dải viền, từ hệ số guided filter và mặt nạ AI. */
-function bandAlpha(pv, u, ar, ag, ab, b, flat, r, g, b2) {
+function bandAlpha(pv, u, ar, ag, ab, b, flat, r, g, b2, crisp) {
   let q = ar * r + ag * g + ab * b2 + b;
   q = q * (1 - flat) + pv * flat;
   // Guided filter chỉ được dịch alpha trong phạm vi AI còn phân vân
@@ -453,7 +460,11 @@ function bandAlpha(pv, u, ar, ag, ab, b, flat, r, g, b2) {
   else if (q > pv + span) q = pv + span;
   // Hòa dần về mặt nạ ở mép ngoài dải viền để không tạo vòng tròn
   const blend = u >= 0.12 ? 1 : u / 0.12;
-  return curve(q * blend + pv * (1 - blend));
+  const alpha = curve(q * blend + pv * (1 - blend));
+  if (crisp <= 0) return alpha;
+  // Vật có biên cứng: thu hẹp dải bán trong suốt để mép không thành viền nhạt
+  const t = clip01((alpha - 0.25) / 0.5);
+  return alpha + (t * t * (3 - 2 * t) - alpha) * crisp;
 }
 
 /**
@@ -550,7 +561,9 @@ export function refine({ layers, guide, gw, gh, full, W, H }) {
   const { R, G, B } = splitChannels(guide, N);
 
   let p = composeLayers(layers, gw, gh);
-  p = decideRegions(p, guide, gw, gh);
+  const decided = decideRegions(p, guide, gw, gh);
+  p = decided.p;
+  const crisp = decided.crisp || new Float32Array(N);
   p = removeStrayIslands(p, gw, gh);
 
   const scale = Math.max(gw, gh) / 1024;
@@ -565,7 +578,7 @@ export function refine({ layers, guide, gw, gh, full, W, H }) {
   const alpha = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     alpha[i] = u[i] > 0
-      ? bandAlpha(p[i], u[i], coef.aR[i], coef.aG[i], coef.aB[i], coef.b[i], coef.flat[i], R[i], G[i], B[i])
+      ? bandAlpha(p[i], u[i], coef.aR[i], coef.aG[i], coef.aB[i], coef.b[i], coef.flat[i], R[i], G[i], B[i], crisp[i])
       : curve(p[i]);
   }
 
@@ -605,7 +618,7 @@ export function refine({ layers, guide, gw, gh, full, W, H }) {
       let q;
       if (u[a] > 0 || u[b] > 0 || u[c] > 0 || u[d] > 0) {
         q = bandAlpha(pv, lerp(u), lerp(coef.aR), lerp(coef.aG), lerp(coef.aB), lerp(coef.b), lerp(coef.flat),
-          full[i] / 255, full[i + 1] / 255, full[i + 2] / 255);
+          full[i] / 255, full[i + 1] / 255, full[i + 2] / 255, lerp(crisp));
         if (q < 1) {
           // Uint8ClampedArray tự giới hạn 0..255
           full[i] += lerp(dR) * 255;
