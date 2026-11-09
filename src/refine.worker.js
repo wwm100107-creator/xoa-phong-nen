@@ -210,33 +210,48 @@ function purgeAnnexesAndShadows(p, guide, w, h) {
     }
   }
 
-  // 2. Triệt tiêu bóng đổ (Deshadow):
+  // 1b. Lọc trung vị 1D (Median filter r=12) làm mượt đường viền đáy, chống sọc dọc
+  const smoothBottom = new Int16Array(w).fill(-1);
+  const rWin = 12;
   for (let x = 0; x < w; x++) {
-    const bY = bottomCurve[x];
+    const vals = [];
+    for (let dx = -rWin; dx <= rWin; dx++) {
+      const nx = x + dx;
+      if (nx >= 0 && nx < w && bottomCurve[nx] !== -1) {
+        vals.push(bottomCurve[nx]);
+      }
+    }
+    if (vals.length >= 4) {
+      vals.sort((a, b) => a - b);
+      smoothBottom[x] = vals[Math.floor(vals.length / 2)];
+    }
+  }
+
+  // 2. Triệt tiêu bóng đổ (Deshadow) với đường đáy mượt mà:
+  for (let x = 0; x < w; x++) {
+    const bY = smoothBottom[x];
     if (bY === -1) {
       // Cột này không có chủ thể ở nửa dưới -> xóa sạch phần đáy
       for (let y = Math.floor(h * 0.82); y < h; y++) p[y * w + x] = 0;
       continue;
     }
 
-    // Vùng chuyển tiếp (tối đa 13px dưới đáy chủ thể): chỉ giữ nếu là viền trắng thật của sticker
-    for (let y = bY + 1; y <= bY + 13 && y < h; y++) {
+    for (let y = bY + 1; y < h; y++) {
       const idx = y * w + x;
-      const i = idx * 4;
-      const r = guide[i], g = guide[i + 1], b = guide[i + 2];
-      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      const maxRGB = Math.max(r, g, b), minRGB = Math.min(r, g, b);
-      const sat = maxRGB === 0 ? 0 : (maxRGB - minRGB) / maxRGB;
-
-      const isWhite = (lum > 0.80 && sat < 0.18 && b > 180);
-      if (!isWhite) {
+      const dist = y - bY;
+      if (dist <= 13) {
+        const i = idx * 4;
+        const r = guide[i], g = guide[i + 1], b = guide[i + 2];
+        const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        const maxRGB = Math.max(r, g, b), minRGB = Math.min(r, g, b);
+        const sat = maxRGB === 0 ? 0 : (maxRGB - minRGB) / maxRGB;
+        const isWhite = (lum > 0.70 && sat < 0.22 && b > 160);
+        if (!isWhite) {
+          p[idx] = 0;
+        }
+      } else {
         p[idx] = 0;
       }
-    }
-
-    // Vượt quá 13px dưới đáy chủ thể: 100% bóng đổ / nền -> xóa sạch
-    for (let y = bY + 14; y < h; y++) {
-      p[y * w + x] = 0;
     }
   }
 
@@ -252,7 +267,7 @@ function purgeAnnexesAndShadows(p, guide, w, h) {
         const maxRGB = Math.max(r, g, b), minRGB = Math.min(r, g, b);
         const sat = maxRGB === 0 ? 0 : (maxRGB - minRGB) / maxRGB;
 
-        const isTape = (lum >= 0.50 && lum <= 0.85 && sat >= 0.10 && b < 180);
+        const isTape = (lum >= 0.50 && lum <= 0.85 && sat >= 0.10 && sat <= 0.35 && b < 180 && r > g && r < 230);
         const isDarkBg = (lum < 0.20);
         if (isTape || isDarkBg) {
           p[idx] = 0;

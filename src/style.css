@@ -138,6 +138,23 @@ input[type=range]:disabled { opacity: .4; }
 .bg-chip.custom { background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); }
 .bg-chip.custom input { opacity: 0; position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
 
+.feature-badges {
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+.f-badge {
+  font-size: 12.5px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.4;
+}
+
 /* ---------------- Cột xem trước / Workspace ---------------- */
 .workspace { min-width: 0; }
 .empty {

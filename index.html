@@ -14,8 +14,8 @@
       <div class="brand">
         <img src="/logo.svg" alt="UyCut AI Logo" class="brand-logo" />
         <div class="brand-text">
-          <span class="brand-name">UyCut <span class="badge">AI 5.0 REA</span></span>
-          <span class="brand-tagline">Tách nền đỉnh cao chuẩn Remove.bg · 100% độ phân giải gốc · Made by Uy</span>
+          <span class="brand-name">UyCut <span class="badge">AI</span></span>
+          <span class="brand-tagline">Tách nền tự động · Chuẩn độ phân giải gốc · Made by Uy</span>
         </div>
       </div>
       <nav class="header-nav">
@@ -32,65 +32,16 @@
           <div class="dz-icon">⬆</div>
           <strong>Kéo thả ảnh vào đây</strong>
           <span>hoặc bấm để chọn · dán bằng Ctrl+V</span>
-          <small>JPG · PNG · WebP · HEIC · TIFF · AVIF · BMP · GIF · SVG · ICO</small>
+          <small>Hỗ trợ mọi định dạng: JPG · PNG · WebP · HEIC · TIFF · AVIF · BMP · GIF · SVG</small>
         </label>
 
         <section class="settings">
-          <h2>Mô hình AI</h2>
-          <select id="modelSelect">
-            <option value="rmbg-1.4" selected>⭐ RMBG-1.4 Studio (Khuyên dùng · Cực nhanh ~44MB)</option>
-            <option value="birefnet">✨ BiRefNet Lite (Đoạt giải ECCV 2024 · Viền siêu nét ~114MB)</option>
-            <option value="isnet_fp16">IS-Net Cân bằng (~85MB)</option>
-            <option value="isnet">IS-Net Cao nhất (~170MB)</option>
-            <option value="isnet_quint8">IS-Net Siêu nhẹ (~40MB)</option>
-          </select>
-          <p class="hint">Đệm khung 1:1 chống méo ảnh. Tách chuẩn từng cuống lá, viền sticker, tóc tơ.</p>
-
-          <h2>Tinh chỉnh viền & Khử rác</h2>
-          <label class="switch">
-            <input id="keepMainToggle" type="checkbox" checked />
-            <span>Lọc sạch rác nền & vật thể phụ (Chủ thể chính)</span>
-          </label>
-          <label class="switch">
-            <input id="refineToggle" type="checkbox" checked />
-            <span>Bám viền theo ảnh gốc (Guided Filter)</span>
-          </label>
-          <label class="switch">
-            <input id="deshadowToggle" type="checkbox" checked />
-            <span>Tự động xóa bóng đổ & băng keo (Deshadow REA)</span>
-          </label>
-          <div class="quick-presets">
-            <button type="button" id="autoRbgBtn" class="preset-btn active" title="Cài đặt tối ưu tự động chuẩn như Remove.bg: triệt tiêu bóng đổ, lọc rác, bảo vệ 100% chủ thể">⭐ Chuẩn Remove.bg</button>
-            <button type="button" id="stripStickerBtn" class="preset-btn" title="Tự động bóc sạch viền giấy trắng của sticker, chỉ giữ lại ruột quả/vật thể">✂️ Bóc viền Sticker</button>
-            <button type="button" id="resetBorderBtn" class="preset-btn" title="Khôi phục lại viền gốc">↺ Mặc định</button>
-          </div>
-          <div class="slider">
-            <label for="threshRange">Độ nhạy tách nền <b id="threshVal">50%</b></label>
-            <input id="threshRange" type="range" min="10" max="90" value="50" />
-          </div>
-          <div class="slider">
-            <label for="trimRange">Thu gọn viền / Bóc viền thừa <b id="trimVal">0px</b></label>
-            <input id="trimRange" type="range" min="0" max="6" value="0" />
-          </div>
-          <div class="slider">
-            <label for="radiusRange">Bán kính tinh chỉnh <b id="radiusVal">4</b></label>
-            <input id="radiusRange" type="range" min="1" max="10" value="4" />
-          </div>
-          <div class="slider">
-            <label for="lowRange">Lọc nhiễu nền <b id="lowVal">8%</b></label>
-            <input id="lowRange" type="range" min="0" max="30" value="8" />
-          </div>
-          <div class="slider">
-            <label for="highRange">Độ đặc chủ thể <b id="highVal">95%</b></label>
-            <input id="highRange" type="range" min="50" max="100" value="95" />
-          </div>
-
-          <h2>Nền xuất ra</h2>
+          <h2>Màu nền xuất ra</h2>
           <div class="bg-options" id="bgOptions">
             <button data-bg="transparent" class="bg-chip active checker" title="Trong suốt"></button>
             <button data-bg="#ffffff" class="bg-chip" style="background:#fff" title="Trắng"></button>
             <button data-bg="#000000" class="bg-chip" style="background:#000" title="Đen"></button>
-            <button data-bg="#2563eb" class="bg-chip" style="background:#2563eb" title="Xanh"></button>
+            <button data-bg="#2563eb" class="bg-chip" style="background:#2563eb" title="Xanh dương"></button>
             <button data-bg="#ef4444" class="bg-chip" style="background:#ef4444" title="Đỏ"></button>
             <label class="bg-chip custom" title="Màu tùy chọn">
               <input id="bgColor" type="color" value="#22c55e" />
@@ -99,10 +50,17 @@
 
           <h2>Định dạng tải về</h2>
           <select id="formatSelect">
-            <option value="image/png" selected>PNG (không mất dữ liệu, có trong suốt)</option>
-            <option value="image/webp">WebP (nhẹ, có trong suốt)</option>
-            <option value="image/jpeg">JPG (không trong suốt – dùng màu nền)</option>
+            <option value="image/png" selected>PNG (chuẩn chất lượng cao, có trong suốt)</option>
+            <option value="image/webp">WebP (siêu nhẹ, có trong suốt)</option>
+            <option value="image/jpeg">JPG (không trong suốt – ghép với màu nền)</option>
           </select>
+
+          <div class="feature-badges">
+            <div class="f-badge">✓ AI tự động nhận diện chủ thể & tách nền</div>
+            <div class="f-badge">✓ Giữ trọn 100% độ phân giải gốc của ảnh</div>
+            <div class="f-badge">✓ Tự động xóa sạch bóng đổ & rác nền</div>
+            <div class="f-badge">✓ 100% Client-side: xử lý trực tiếp trên máy bạn</div>
+          </div>
         </section>
       </aside>
 

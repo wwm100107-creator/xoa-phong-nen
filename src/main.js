@@ -17,13 +17,7 @@ const GUIDE_MAX = 1536;
 // ---------------------------------------------------------------- DOM ELEMENTS
 const $ = (id) => document.getElementById(id);
 const els = {
-  drop: $('dropzone'), input: $('fileInput'), model: $('modelSelect'),
-  keepMain: $('keepMainToggle'), refine: $('refineToggle'), deshadow: $('deshadowToggle'),
-  autoRbg: $('autoRbgBtn'), stripSticker: $('stripStickerBtn'), resetBorder: $('resetBorderBtn'),
-  trim: $('trimRange'), trimVal: $('trimVal'),
-  radius: $('radiusRange'), low: $('lowRange'), high: $('highRange'),
-  thresh: $('threshRange'), threshVal: $('threshVal'),
-  radiusVal: $('radiusVal'), lowVal: $('lowVal'), highVal: $('highVal'),
+  drop: $('dropzone'), input: $('fileInput'),
   bgOptions: $('bgOptions'), bgColor: $('bgColor'), format: $('formatSelect'),
   empty: $('emptyState'), viewer: $('viewer'), meta: $('metaInfo'),
   download: $('downloadBtn'), rerun: $('rerunBtn'), compare: $('compare'),
@@ -75,21 +69,14 @@ function runWorker(payload, transfer) {
 }
 
 function getParams() {
-  const t = +els.thresh.value / 100; // 0.1 .. 0.9 (mặc định 0.5)
-  const delta = (0.5 - t) * 0.35;
-  const lowOffset = +els.low.value / 100;
-  const highOffset = +els.high.value / 100;
-  const low = Math.max(0.04, Math.min(0.45, lowOffset + delta));
-  const high = Math.max(0.55, Math.min(1, highOffset + delta));
-
   return {
-    keepMain: els.keepMain ? els.keepMain.checked : true,
-    refine: els.refine.checked,
-    deshadow: els.deshadow ? els.deshadow.checked : true,
-    trim: +els.trim.value,
-    radius: +els.radius.value,
-    low,
-    high,
+    keepMain: true,
+    refine: true,
+    deshadow: true,
+    trim: 0,
+    radius: 4,
+    low: 0.08,
+    high: 0.92,
   };
 }
 
@@ -117,11 +104,11 @@ async function refineItem(item) {
 async function runAI(item) {
   setStatus(item, 'ai');
   const t = performance.now();
-  item.mask = await predictMask(item.orig, els.model.value, (label, ratio) => {
+  item.mask = await predictMask(item.orig, 'rmbg-1.4', (label, ratio) => {
     if (item === selected) showOverlay(label, ratio);
   });
   item.aiMs = performance.now() - t;
-  item.model = els.model.value;
+  item.model = 'rmbg-1.4';
 }
 
 async function processItem(item) {
@@ -537,91 +524,7 @@ els.resetBrushBtn.addEventListener('click', () => {
   selected.thumb.src = resizeHQ(selected.result, ...fit(selected.W, selected.H, 120)).toDataURL();
 });
 
-// ---------------------------------------------------------------- TINH CHỈNH THỜI GIAN THỰC (60FPS)
-let refineTimer, refining = false, refineAgain = false;
-
-function onParamsChange() {
-  els.threshVal.textContent = els.thresh.value + '%';
-  els.trimVal.textContent = els.trim.value + 'px';
-  els.radiusVal.textContent = els.radius.value;
-  els.lowVal.textContent = els.low.value + '%';
-  els.highVal.textContent = els.high.value + '%';
-  els.radius.disabled = !els.refine.checked;
-
-  items.forEach((i) => { if (i.status === 'done') i.dirty = true; });
-  clearTimeout(refineTimer);
-  refineTimer = setTimeout(refineSelected, 80);
-}
-
-async function refineSelected() {
-  if (refining) { refineAgain = true; return; }
-  const it = selected;
-  if (!it || it.status !== 'done') return;
-  refining = true;
-  try {
-    await refineItem(it);
-    renderViewer();
-  } finally {
-    refining = false;
-  }
-  if (refineAgain) {
-    refineAgain = false;
-    refineSelected();
-  }
-}
-
-['input', 'change'].forEach((ev) => {
-  [els.thresh, els.trim, els.radius, els.low, els.high, els.refine, els.deshadow, els.keepMain].filter(Boolean).forEach((el) => {
-    el.addEventListener(ev, onParamsChange);
-  });
-});
-
-els.autoRbg?.addEventListener('click', () => {
-  els.trim.value = 0;
-  els.thresh.value = 50;
-  els.radius.value = 4;
-  els.low.value = 8;
-  els.high.value = 95;
-  if (els.keepMain) els.keepMain.checked = true;
-  if (els.deshadow) els.deshadow.checked = true;
-  if (els.refine) els.refine.checked = true;
-  onParamsChange();
-});
-
-els.stripSticker?.addEventListener('click', () => {
-  els.trim.value = 3;
-  els.thresh.value = 52;
-  onParamsChange();
-});
-
-els.resetBorder?.addEventListener('click', () => {
-  els.trim.value = 0;
-  els.thresh.value = 50;
-  els.radius.value = 4;
-  els.low.value = 8;
-  els.high.value = 95;
-  if (els.keepMain) els.keepMain.checked = true;
-  if (els.deshadow) els.deshadow.checked = true;
-  if (els.refine) els.refine.checked = true;
-  onParamsChange();
-});
-
-// Tự động chạy lại AI khi người dùng chọn mô hình khác trong dropdown
-els.model.addEventListener('change', async () => {
-  const it = selected;
-  if (!it?.orig) return;
-  try {
-    await runAI(it);
-    setStatus(it, 'refine');
-    await refineItem(it);
-    setStatus(it, 'done');
-  } catch (e) {
-    it.error = e.message;
-    setStatus(it, 'error');
-  }
-  renderViewer();
-});
-
+// ---------------------------------------------------------------- CHẠY LẠI AI
 els.rerun.addEventListener('click', async () => {
   const it = selected;
   if (!it?.orig) return;
